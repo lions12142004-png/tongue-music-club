@@ -1,0 +1,14 @@
+[
+    {"time": 2000, "type": "front", "duration": 3000},
+    {"time": 8000, "type": "down", "duration": 3000},
+    {"time": 12500, "type": "shoulder_R", "duration": 4500},
+    {"time": 14000, "type": "left", "duration": 3000},
+    {"time": 18500, "type": "shoulder_L", "duration": 4500},
+    {"time": 20000, "type": "right", "duration": 3000},
+    {"time": 26000, "type": "up", "duration": 3000},
+    {"time": 31500, "type": "left"},
+    {"time": 33000, "type": "up"},
+    {"time": 34500, "type": "right"},
+    {"time": 36000, "type": "down"},
+    {"time": 37500, "type": "front"}
+]
