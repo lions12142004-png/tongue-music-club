@@ -543,7 +543,7 @@ export class VisionEngine {
     this.model = null;          // 学習モデル（rf.js の形式）
     this.userCalib = null;      // 測定の平均値
     this.calibrating = false;   // 測定中は判定しない（PC版 is_calibrating）
-    this.exposure = 50;         // 赤色検知の厳しさ
+    this.exposure = 0;          // 赤色検知の厳しさ（修正(1.5.4): 初期値 0）
     this.wantMask = false;      // マスクのプレビューを作るか
     this.flipInput = false;     // 端末が反転済みの映像を返す場合の保険（開発者画面）
     this.poseEvery = 3;

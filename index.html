@@ -20,7 +20,8 @@
 <!-- カメラ映像（画面には出さず、Canvas に描いて使う。iPhone で止まらないよう非表示にはしない） -->
 <video id="cam" playsinline muted autoplay></video>
 <form id="idform" autocomplete="off">
-  <input id="idinput" type="text" inputmode="latin" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="12" placeholder="例: A01" enterkeyhint="done">
+  <input id="idinput" type="text" inputmode="latin" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="12" placeholder="例: A01" enterkeyhint="next">
+  <input id="passinput" type="password" inputmode="latin" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="16" placeholder="パスワード" enterkeyhint="done" autocomplete="off">
   <button type="submit">決定</button>
 </form>
 <form id="nameform" autocomplete="off">

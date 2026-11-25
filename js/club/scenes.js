@@ -15,18 +15,19 @@ const R = (x, y, w, h) => new Rect(x, y, w, h);
 // 画面の部品の位置（PC版と同じ）
 const BTN = {
   title: R(W / 2 - 110, C.TITLE_BTN_Y, 220, 50),
-  user: R(W / 2 - 140, 145, 280, 44), login: R(W / 2 - 110, 315, 220, 48), loginBack: R(664, 366, 122, 44),
+  user: R(W / 2 - 140, 145, 280, 44), pass: R(W / 2 - 140, 235, 280, 44), login: R(W / 2 - 110, 315, 220, 48), loginBack: R(664, 366, 122, 44),
   settings: R(128, C.CLUB_CARD_ROW_Y, 84, C.CLUB_CARD_H), rule: R(224, C.CLUB_CARD_ROW_Y, 84, C.CLUB_CARD_H),
   calib: R(320, C.CLUB_CARD_ROW_Y, 140, C.CLUB_CARD_H), check: R(472, C.CLUB_CARD_ROW_Y, 120, C.CLUB_CARD_H),
-  songBack: R(604, C.CLUB_CARD_ROW_Y, 84, C.CLUB_CARD_H), records: R(700, C.CLUB_CARD_ROW_Y, 84, C.CLUB_CARD_H),
+  songBack: R(700, C.CLUB_CARD_ROW_Y, 84, C.CLUB_CARD_H), records: R(604, C.CLUB_CARD_ROW_Y, 84, C.CLUB_CARD_H),   // 修正(1.5.1): 「戻る」をいちばん右に
   diffBack: R(128, C.CLUB_CARD_ROW_Y, 120, C.CLUB_CARD_H), rank: R(260, C.CLUB_CARD_ROW_Y, 190, C.CLUB_CARD_H),
   next: R(W - 170, H - 55, 140, 36), testStart: R(W / 2 - 100, 350, 200, 40), redo: R(W / 2 - 150, 350, 300, 40),
   ret: R(W / 2 - 120, 428, 240, 42), pause: R(W - 70, H - 70, 60, 60),
   resume: R(W / 2 - 120, 150, 240, 50), ruleBtn: R(W / 2 - 120, 220, 240, 50), quit: R(W / 2 - 120, 290, 240, 50),
   yes: R(W / 2 - 130, 250, 100, 50), no: R(W / 2 + 30, 250, 100, 50), ruleBack: R(W / 2 - 100, H - 70, 200, 50),
-  pv: R(...C.CLUB_PREVIEW_RECT), setBack: R(W - 178, 426, 156, 40), setRank: R(124, 426, 262, 40), setCam: R(392, 426, 94, 40), setExport: R(492, 426, 124, 40),
+  pv: R(...C.CLUB_PREVIEW_RECT), setBack: R(W - 178, 426, 156, 40), setRank: R(124, 426, 330, 40), setCam: R(464, 426, 120, 40),
   raPanel: R(90, 46, 620, 388), raInput: R(250, 222, 300, 40), raJoin: R(180, 344, 200, 52), raNo: R(420, 344, 200, 52), raCancel: R(106, 398, 110, 30),
-  course: R(W / 2 - 132, 330, 265, 95), calibQuit: R(650, 426, 130, 40),
+  courseQuick: R(W / 2 - 275, 326, 265, 95), courseFull: R(W / 2 + 10, 326, 265, 95), calibQuit: R(650, 426, 130, 40),
+  homeExport: R(W / 2 - 190, 420, 180, 40), homeBack: R(W / 2 + 10, 420, 180, 40),
 };
 BTN.pvBgm = R(BTN.pv.x, BTN.pv.bottom + 8, BTN.pv.w, 30);
 const SETTING_ITEMS = [
@@ -200,8 +201,10 @@ export const ClubScenes = {
     ts.draw(S);
     if (this._off) return;
     this.scr.text(`ver ${this.appVersion}${this.mockLike() ? "（動作確認モード）" : ""}`, W - 10, H - 20, 12, "rgba(255,255,255,0.35)", "right");
-    this.scr.hotspot(250, 20, 300, 80, () => this.titleTap("TITLE"));   // 看板を5回タップで開発者画面
+    // 修正(1.5.3): 看板（上の「Tongue Music Club」のネオン）を3秒以内に5回タップで開発者画面。
+    //   画面全体のタップ（準備開始・GAME START）より後から調べられていたため、今まで開けなかった
     this.scr.hotspot(0, 0, W, H, (x, y) => {
+      if (x >= 250 && x <= 550 && y >= 20 && y <= 100) { this.titleTap("TITLE"); if (this.scene === "DEV") return; }
       if (!this.started) { if (!this.busy) this.start(false); return; }
       if (ts.handle_click([x, y])) { this.loginMsgReset = true; this.go("LOGIN", "pan_right", () => this.goLogin()); }
     });
@@ -217,17 +220,19 @@ export const ClubScenes = {
     const msg = this.loginMsg || "", col = this.loginMsgCol === "#E74C3C" ? [231, 76, 60] : [180, 180, 180];
     const lines = F.g_sm.size(msg)[0] > sr.w - 20 && msg.includes("。") ? [msg.split("。")[0] + "。", msg.split("。").slice(1).join("。")] : [msg];
     lines.forEach((ln, i) => art.text_c(S, F.g_sm, ln, col, W / 2, (lines.length > 1 ? 80 : 93) + i * 20));
-    S.blit(art.text(F.m_sm, "参加者ID（半角英数）:", CREAM), [BTN.user.x, BTN.user.y - 24]);
+    // 修正(1.5.2): PC版と同じく、ID とパスワード
+    S.blit(art.text(F.m_sm, "参加者ID（担当者から伝えられたもの）:", CREAM), [BTN.user.x, BTN.user.y - 24]);
     draw.rect(S, [22, 6, 14], BTN.user, 0, 6); draw.rect(S, PINK, BTN.user, 2, 6);
-    art.text_c(S, F.m_xs, "研究の担当者から伝えられたIDです", [214, 190, 200], W / 2, 204);
-    art.text_c(S, F.m_xs, "PC版と同じIDを使ってください", [214, 190, 200], W / 2, 224);
-    this.appBtn(BTN.login, "決定", C.CLUB_COL_PINK_DEEP, [40, 8, 20], () => this.submitId(), F.m_md);
+    S.blit(art.text(F.m_sm, "パスワード（半角英数）:", CREAM), [BTN.pass.x, BTN.pass.y - 24]);
+    draw.rect(S, [22, 6, 14], BTN.pass, 0, 6); draw.rect(S, PINK, BTN.pass, 2, 6);
+    this.appBtn(BTN.login, "ログイン / 新規登録", C.CLUB_COL_PINK_DEEP, [40, 8, 20], () => this.submitId(), F.m_md);
+    art.text_c(S, F.m_xs, "はじめてのときに入れたものがパスワードになります。忘れないでください", [214, 190, 200], W / 2, BTN.login.bottom + 8);
     this.cardBtn(BTN.loginBack, "入口へ戻る", () => this.go("TITLE", "pan_left"), null, "wood");
   },
   async goLogin() {
     const last = (await this.dbGetSafe("lastUser")) || "";
     if (this.scene !== "LOGIN") this.setScene("LOGIN");
-    this.loginMsg = last ? `前回のID「${last}」が入っています。そのままでよければ「決定」` : "半角英数字（12文字まで）で入力してください";
+    this.loginMsg = last ? `前回のID「${last}」が入っています。パスワードを入れてください` : "IDとパスワードを入れてください";
     this.loginMsgCol = "#B4B4B4"; this.showIdForm(true, last);
   },
   // 受付 → 客席への案内（ようこそ → 横にパン → 閉じたメニュー → 表紙が開く）
@@ -270,13 +275,19 @@ export const ClubScenes = {
       "・マスクや帽子、前髪など、顔を隠すものは外してください", "・照明や太陽の光がカメラに直接映り込むと、うまく判定できない場合があります"];
     const mw = Math.max(...ins.map((t) => F.m_sm.size(t)[0]));
     ins.forEach((t, i) => S.blit(art.text(F.m_sm, t, [255, 255, 255]), [W / 2 - mw / 2, 140 + i * 28]));
-    art.text_c(S, F.m_md, "下のコースをタップして始めてください", [255, 255, 255], W / 2, 292);
-    const r = BTN.course, hv = this.hov(r), col = [241, 196, 15];
-    draw.rect(S, hv ? col : [30, 8, 18], r, 0, 12); draw.rect(S, col, r, 2, 12);
-    art.text_c(S, F.m_md, "じっくりコース", hv ? [17, 17, 17] : col, r.centerx, r.y + 10);
-    art.text_c(S, F.m_sm, "判定精度を上げるための測定です", hv ? [17, 17, 17] : [226, 214, 220], r.centerx, r.y + 44);
-    art.text_c(S, F.m_sm, "所要時間 約3分", hv ? [17, 17, 17] : [226, 214, 220], r.centerx, r.y + 68);
-    this.tap(r, () => this.startCalibration());
+    art.text_c(S, F.m_md, "コースを選んでください", [255, 255, 255], W / 2, 292);
+    // 修正(1.5.1): PC版と同じく、サクッとコースとじっくりコース
+    for (const [r, mode, name, catchTxt, dur, col] of [
+      [BTN.courseQuick, "quick", "サクッとコース", "すぐに遊びたい人におすすめ！", "所要時間 約1分", [78, 205, 196]],
+      [BTN.courseFull, "full", "じっくりコース", "判定精度を上げたい人におすすめ！", "所要時間 約3分", [241, 196, 15]]]) {
+      const hv = this.hov(r);
+      draw.rect(S, hv ? col : [30, 8, 18], r, 0, 12); draw.rect(S, col, r, 2, 12);
+      art.text_c(S, F.m_md, name, hv ? [17, 17, 17] : col, r.centerx, r.y + 10);
+      art.text_c(S, F.m_sm, catchTxt, hv ? [17, 17, 17] : [226, 214, 220], r.centerx, r.y + 44);
+      art.text_c(S, F.m_sm, dur, hv ? [17, 17, 17] : [226, 214, 220], r.centerx, r.y + 68);
+      this.tap(r, () => this.startCalibration(mode));
+    }
+    if (this.user && this.user.calib_course === "quick") art.text_c(S, F.m_xs, "※ 判定が不安定なら、じっくりコースで測り直してください", GOLD, W / 2, 430);
     if (this.model) this.cardBtn(BTN.calibQuit, "曲選択へ戻る", () => this.go("SONG_SELECT", "zoom_out"), null, "wood");
   },
   draw_CALIBRATION() {
@@ -293,12 +304,16 @@ export const ClubScenes = {
   draw_CALIB_CONFIRM() {
     const S = this.club.screen, art = this.club.art, F = this.club.F, step = this.calibSteps[this.calibIdx], n = this.calibPlan.length;
     S.blit(art.bg("tablet"), [0, 0]);
-    art.text_c(S, F.m_lg, `【${step.name}】 の確認 (${this.calibRound}/${n}回目)`, PINK, W / 2, 72);
-    art.text_c(S, F.m_md, this.calibRound < n ? `この状態で記録して、${this.calibRound + 1}回目を測定しますか？` : "この状態で記録して、次の方向へ進みますか？", [255, 255, 255], W / 2, 128);
-    art.text_c(S, F.m_xs, this.calibRound === 1 ? "※1回目の値が、この方向の基準値になります" : "※2・3回目は判定の学習にだけ使います（基準値は1回目のまま）", [200, 186, 196], W / 2, 162);
-    const p = this.pendingCalib || {};
-    art.text_c(S, F.g_sm, step.key.startsWith("face") ? `正面・舌なし基準データを ${this.pendingFeats.length} フレーム記録しました` : `取得値: [ 下:${p.down} 左:${p.left} 右:${p.right} 前:${p.front} ] (${this.pendingFeats.length}フレーム)`, [255, 255, 255], W / 2, 196);
-    if (step.key === "up" && p.lip_ratio_thresh !== undefined) art.text_c(S, F.g_sm, `設定される上唇の専用閾値: ${p.lip_ratio_thresh.toFixed(4)} (測定平均 × 1.15)`, [78, 205, 196], W / 2, 224);
+    // 修正(1.5.2): 「○○フレーム記録しました」はやめ、取得値は測定した方向の値だけ。行の数に合わせて上下の真ん中にそろえる
+    const p = this.pendingCalib || {}, k = step.key, lines = [];
+    lines.push([F.m_lg, n > 1 ? `【${step.name}】 の確認 (${this.calibRound}/${n}回目)` : `【${step.name}】 の確認`, PINK, 0]);
+    lines.push([F.m_md, this.calibRound < n ? `この状態で記録して、${this.calibRound + 1}回目を測定しますか？` : "この状態で記録して、次の方向へ進みますか？", [255, 255, 255], 18]);
+    if (n > 1) lines.push([F.m_xs, this.calibRound === 1 ? "※1回目の値が、この方向の基準値になります" : "※2・3回目は判定の学習にだけ使います（基準値は1回目のまま）", [200, 186, 196], 8]);
+    if (!k.startsWith("face")) lines.push([F.m_md, `取得値（${step.name}）: ${p[k] ?? 0}`, GOLD, 22]);
+    if (k === "up" && p.lip_ratio_thresh !== undefined) lines.push([F.g_sm, `設定される上唇の専用閾値: ${p.lip_ratio_thresh.toFixed(4)} (測定平均 × 1.15)`, [78, 205, 196], 10]);
+    const total = lines.reduce((a, [f, , , gap]) => a + f.size("あ")[1] + gap, 0);
+    let y = Math.round(56 + (262 - 56 - total) / 2);
+    for (const [f, t, c, gap] of lines) { y += gap; art.text_c(S, f, t, c, W / 2, y); y += f.size("あ")[1]; }
     this.appBtn(R(W / 2 - 140, 280, 120, 54), "はい", [46, 204, 113], [17, 17, 17], () => this.commitCalibStep());
     this.appBtn(R(W / 2 + 20, 280, 120, 54), "戻る", [231, 76, 60], [255, 255, 255], () => { this.cancelRecording(); this.setScene("CALIBRATION"); });
   },
@@ -539,14 +554,14 @@ export const ClubScenes = {
     const spread = Math.max(0, Math.min(this.menuSpread, nSpreads - 1)), start = spread * per, page = songs.slice(start, start + per);
     const highs = page.map((s) => Math.max(...["EASY", "NORMAL", "HARD"].map((d) => this.getRecord(s.title, d).high)));
     const tc = this.todayCounts(), norma = DIRS5.map((k) => [k, DIR_JA[k], tc[k] || 0]);
-    const key = JSON.stringify([spread, nSpreads, page.map((s) => [s.title, s.enabled]), highs, norma, this.user && this.user.id]);
+    const key = JSON.stringify([spread, nSpreads, page.map((s) => [s.title, s.enabled]), highs, norma, this.user && this.user.id, this.user && this.user.calib_course]);
     S.blit(art.cached("song_select", key, () => {
       const s = art.bg("table").copy();
       art.paint_menu_spread(s, songs, start, highs, norma, spread);
       s.blit(art.text(F.m_sm, `PLAYER: ${this.user ? this.user.id : ""}`, GOLD), [20, 14]);
       art.text_c(s, F.m_sm, "― お好きな曲をお選びください ―", CREAM, W / 2, 14);
       art.text_c(s, F.m_md, `${spread + 1} / ${nSpreads}`, CREAM, W / 2, C.CLUB_BOOK_RECT[1] + C.CLUB_BOOK_RECT[3] + 16);
-      const t = art.text(F.m_sm, "測定: じっくりコース", [232, 176, 192]); s.blit(t, [W - t.w - 20, 14]);
+      const t = art.text(F.m_sm, `測定: ${this.courseNames[(this.user && this.user.calib_course) || "full"] || "じっくりコース"}`, [232, 176, 192]); s.blit(t, [W - t.w - 20, 14]);
       return s;
     }), [0, 0]);
     menuSongRects().forEach((r, slot) => {
@@ -707,7 +722,6 @@ export const ClubScenes = {
       if (this.preview.paused) { this.preview.paused = false; this.club.sound.pauseMusic(false); }
       await this.saveUser(); this.go("SONG_SELECT", "pan_down");
     }, null, "wood");
-    this.cardBtn(BTN.setExport, "記録の書き出し", () => this.exportCSV(), F.m_xs);
     this.cardBtn(BTN.setCam, "カメラ調整", () => this.go("CAMERA_ADJUST", "zoom_in"), F.m_xs);
     if (this.sync.enabled) {
       const p = this.sync.myProfile();
@@ -810,7 +824,7 @@ export const ClubScenes = {
     const P = R(80, 26, 640, 380);
     S.fill([52, 8, 24], P.move(5, 7).arr()); S.blit(art.cached("home_paper", 0, () => art.paper(P.w, P.h, 31)), P.topleft); draw.rect(S, C.CLUB_COL_PAPER_EDGE, P, 2);
     S.blit(art.text(F.m_lg, "出演の記録", ink), [P.x + 22, P.y + 12]);
-    if (this.user && this.user.calibAt) { const t = art.text(F.m_xs, `測定: じっくりコース（${this.user.calibAt.slice(5, 10).replace("-", "/")}）`, sub); S.blit(t, [P.right - 22 - t.w, P.y + 22]); }
+    if (this.user && this.user.calibAt) { const t = art.text(F.m_xs, `測定: ${this.courseNames[this.user.calib_course] || "じっくりコース"}（${this.user.calibAt.slice(5, 10).replace("-", "/")}）`, sub); S.blit(t, [P.right - 22 - t.w, P.y + 22]); }
     art._rule(S, P.x + 18, P.y + 54, P.w - 36);
     const tc = this.todayCounts();
     S.blit(art.text(F.m_md, "今日のノルマ", C.CLUB_COL_STAMP), [P.x + 24, P.y + 66]);
@@ -839,7 +853,8 @@ export const ClubScenes = {
     const st = this.sync.statusText();
     if (st) S.blit(art.text(F.m_xs, st, [232, 176, 192]), [20, 8]);
     this.scr.hotspot(80, 26, 200, 40, () => this.titleTap("HOME"));
-    this.cardBtn(R(W / 2 - 90, 420, 180, 40), "曲選択へ戻る", () => this.go("SONG_SELECT", "fade"));
+    this.cardBtn(BTN.homeExport, "記録の書き出し（CSV）", () => this.exportCSV(), F.m_xs);   // 修正(1.5.1): 設定から移動
+    this.cardBtn(BTN.homeBack, "曲選択へ戻る", () => this.go("SONG_SELECT", "fade"));
   },
 };
 

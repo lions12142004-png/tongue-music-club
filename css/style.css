@@ -12,6 +12,8 @@ html, body {
 #game { display: block; touch-action: none; }
 #cam { position: fixed; left: 0; top: 0; width: 2px; height: 2px; opacity: 0.01; pointer-events: none; }
 #idform, #nameform { position: fixed; display: none; gap: 8px; z-index: 10; }
+#idform { flex-direction: column; }   /* 1.5.2: ID とパスワードを縦に並べる */
+#idform input { flex: none; }
 #idform input, #nameform input {
   flex: 1; min-width: 0; font: inherit; font-size: max(16px, 1em); padding: .3em .5em; border-radius: 8px;
   border: 2px solid #FF6EA0; background: #16060E; color: #FFF4E8; -webkit-user-select: text; user-select: text;

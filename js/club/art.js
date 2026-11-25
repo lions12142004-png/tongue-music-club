@@ -320,13 +320,19 @@ export class ClubArt {
     s.blit(this.text(F.m_lg, "本日の演目", ink), [PL.x + 22, PL.y + 14]);
     this._rule(s, PL.x + 18, PL.y + 58, PL.w - 40);
     const t = this.text(F.m_sm, "今日のノルマ", C.CLUB_COL_STAMP); s.blit(t, [PR.x + 22, PR.y + 7]);
-    const cell = (PR.w - 44) / 5, isz = C.CLUB_NORMA_ICON_SIZE;
+    // 修正(1.5.4): 絵と数字が隣の枠にはみ出して重ならないよう、1枠に収まる大きさを選ぶ（大きい順に試す）
+    const cell = (PR.w - 36) / 5, gap = 2, iy = PR.y + 27, H0 = C.CLUB_NORMA_ICON_SIZE;
     norma.forEach(([key, ja, val], i) => {
-      const col = val >= 4 ? [176, 120, 0] : val === 3 ? C.CLUB_COL_STAMP : ink, icon = this.small_icon(key, isz);
-      const num = this.text(F.g_sm, icon ? `${val}/3` : `${ja}:${val}/3`, col);
-      let x0 = Math.trunc(PR.x + 22 + cell * i + (cell - (icon ? isz + 2 : 0) - num.w) / 2);
-      if (icon) { s.blit(icon, [x0, PR.y + 27]); x0 += isz + 2; }
-      s.blit(num, [x0, PR.y + 27 + Math.floor(isz / 2) - Math.floor(num.h / 2)]);
+      const col = val >= 4 ? [176, 120, 0] : val === 3 ? C.CLUB_COL_STAMP : ink;
+      let isz = 0, icon = null, num = null;
+      for (const [sz, font] of [[26, F.g_sm], [24, F.g_xs], [20, F.g_xs]]) {
+        isz = Math.min(sz, H0); icon = this.small_icon(key, isz);
+        num = this.text(font, icon ? `${val}/3` : `${ja}:${val}/3`, col);
+        if ((icon ? isz + gap : 0) + num.w <= cell - 6) break;
+      }
+      let x0 = Math.trunc(PR.x + 18 + cell * i + (cell - (icon ? isz + gap : 0) - num.w) / 2);
+      if (icon) { s.blit(icon, [x0, iy + Math.floor((H0 - isz) / 2)]); x0 += isz + gap; }
+      s.blit(num, [x0, iy + Math.floor(H0 / 2) - Math.floor(num.h / 2)]);
     });
     this._rule(s, PR.x + 22, PR.y + 59, PR.w - 40);
     menuSongRects().forEach((r, slot) => {

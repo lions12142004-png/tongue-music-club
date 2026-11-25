@@ -12,7 +12,7 @@ import { Sync } from "./sync.js";
 import { SYNC } from "./config.js";
 import { initClub, ClubScenes, ClubPlay } from "./club/scenes.js";   // 追加(1.5.0): Tongue Music Club の演出
 
-export const APP_VERSION = "1.5.0";
+export const APP_VERSION = "1.5.4";
 const MODEL_VERSION = "html2-rfsvm";     // 学習方法を変えたら上げる（保存してある特徴量から自動で学習し直す）
 const FEAT_VERSIONS = ["feat21-v1", "html1-feat21"];   // 特徴量の版（変えたら先頭に足す。古い特徴量は読まずに測り直しへ）
 const MOCK = new URLSearchParams(location.search).has("mock");
@@ -26,9 +26,11 @@ const DEFAULT_CALIB = {
   right: { up: 0, down: 0, left: 0, right: 10, front: 30 },
   front: { up: 0, down: 0, left: 0, right: 0, front: 50 },
 };
-const DEFAULT_CONFIG = { speed_mult: 5, offset: 0, bgm_vol: 5, se_vol: 3, exposure_offset: 50 };
+const DEFAULT_CONFIG = { speed_mult: 5, offset: 0, bgm_vol: 5, se_vol: 3, exposure_offset: 0, exp_v: 1 };   // 修正(1.5.4): 赤色検知の厳しさの初期値 50 → 0（PC版と同じ）
 const CALIB_SKIP_SEC = 0.5, CALIB_SEC_R1 = 2.5, CIRCLE_SEC = 3.0, CALIB_SEC_R2 = CALIB_SKIP_SEC + CIRCLE_SEC;
-const CALIB_PLAN = ["static", "weak", "circle"];   // じっくりコースのみ
+// 修正(1.5.1): PC版 1124_1 と同じく、サクッとコース（正面で静止・限界まで出す 1回だけ。チュートリアルなし）を追加
+const CALIB_PLANS = { quick: ["static"], full: ["static", "weak", "circle"] };
+const COURSE_NAMES = { quick: "サクッとコース", full: "じっくりコース" };
 const CALIB_STEPS = [
   { key: "face", name: "正面（舌なし）", desc: "軽く口を開け、舌をしまい、カメラの正面を向いた通常の状態で記録してください", min_val: 0 },
   { key: "face_open", name: "口を開けただけ", desc: "舌は出さずに、口を大きく開けた状態で記録してください", min_val: 0 },
@@ -41,7 +43,7 @@ const CALIB_STEPS = [
 const INT_KEYS = new Set(["up", "down", "left", "right", "front"]);
 // 曲（PC版の SONGS の最初の3曲と同じ名前。名前が同じなら、PC とスマホで同じランキングになる）
 // 修正(1.5.0): PC版 1122_2 と同じく、メニュー表に12曲（4曲目からは「準備中」）
-const SONGS_READY = 3;
+const SONGS_READY = 1;   // 修正(1.5.4): いまは「エリーゼのために」だけ遊べる（ほかは準備中）
 const SONGS = ["エリーゼのために", "仮の曲2", "仮の曲3", "仮の曲4", "仮の曲5", "仮の曲6", "仮の曲7", "仮の曲8", "仮の曲9", "仮の曲10", "仮の曲11", "仮の曲12"]
   .map((title, i) => ({ title, audio: "assets/audio/elise2.m4a", beatmap: "assets/beatmaps/track6.json", end_time: 120000, enabled: i < SONGS_READY }));
 const DIFFS = ["EASY", "NORMAL", "HARD"];
@@ -176,7 +178,9 @@ class App {
   setupIdForm() {
     this.idForm = document.getElementById("idform");
     this.idInput = document.getElementById("idinput");
+    this.passInput = document.getElementById("passinput");   // 追加(1.5.2): パスワード
     this.idForm.addEventListener("submit", (e) => { e.preventDefault(); this.submitId(); });
+    this.idInput.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); this.passInput.focus(); } });
     // 追加(1.4.0): ランキングのユーザー名の入力欄
     this.nameForm = document.getElementById("nameform");
     this.nameInput = document.getElementById("nameinput");
@@ -196,12 +200,14 @@ class App {
   placeIdForm() {
     if (!this.idForm) return;
     const r = this.cv.getBoundingClientRect(), s = this.scr.scale;
-    Object.assign(this.idForm.style, { left: (r.left + 260 * s) + "px", top: (r.top + 145 * s) + "px", width: (280 * s) + "px", height: (44 * s) + "px", fontSize: Math.max(14, 22 * s) + "px" });   // 1.5.0: 受付のタブレットの入力枠に重ねる
+    // 1.5.0: 受付のタブレットの入力枠に重ねる／修正(1.5.2): ID（145〜189）とパスワード（235〜279）の2つ
+    Object.assign(this.idForm.style, { left: (r.left + 260 * s) + "px", top: (r.top + 145 * s) + "px", width: (280 * s) + "px", height: (134 * s) + "px", gap: (46 * s) + "px", fontSize: Math.max(14, 22 * s) + "px" });
+    for (const el of [this.idInput, this.passInput]) el.style.height = (44 * s) + "px";
   }
   showIdForm(show, value = "") {
     this.idForm.style.display = show ? "flex" : "none";
-    if (show) { this.placeIdForm(); this.idInput.value = value; }
-    else this.idInput.blur();
+    if (show) { this.placeIdForm(); this.idInput.value = value; this.passInput.value = ""; }
+    else { this.idInput.blur(); this.passInput.blur(); }
   }
 
   // =====================================================
@@ -246,10 +252,17 @@ class App {
   }
 
   async submitId() {
-    const id = this.idInput.value.trim();
-    if (!/^[A-Za-z0-9]{1,12}$/.test(id)) { this.loginMsg = "エラー：半角英数字（12文字まで）で入力してください"; this.loginMsgCol = COL.red; return; }
+    const id = this.idInput.value.trim(), pass = this.passInput.value;
+    if (!/^[A-Za-z0-9]{1,12}$/.test(id)) { this.loginMsg = "エラー：IDは半角英数字（12文字まで）で入力してください"; this.loginMsgCol = COL.red; return; }
+    // 追加(1.5.2): パスワード（PC版と同じく、はじめてのログインで入れたものを登録。この端末の中にだけ、元に戻せない形で保存する）
+    if (!pass) { this.loginMsg = "エラー：パスワードを入力してください"; this.loginMsgCol = COL.red; return; }
+    if (!/^[A-Za-z0-9]{1,16}$/.test(pass)) { this.loginMsg = "エラー：パスワードは半角英数字（16文字まで）です"; this.loginMsgCol = COL.red; return; }
+    const ph = await passHash(id, pass);
+    const prof = await dbGet("user:" + id);
+    if (prof && prof.passHash && prof.passHash !== ph) { this.loginMsg = "エラー：パスワードが違います"; this.loginMsgCol = COL.red; this.passInput.value = ""; return; }
     this.showIdForm(false);
     if (!(await this.loadUser(id))) await this.createUser(id);
+    if (!this.user.passHash) { this.user.passHash = ph; await this.saveUser(); this.popup("パスワードを登録しました。忘れないようにしてください", 3500); }
     await dbSet("lastUser", id);
     this.afterLogin();
   }
@@ -272,6 +285,8 @@ class App {
     this.userCalib = clone(prof.calib || DEFAULT_CALIB);
     if (!this.userCalib.face) this.userCalib.face = { roll: 0.0, yaw: 1.0, pitch: 1.0 };
     this.config = { ...DEFAULT_CONFIG, ...(prof.config || {}) };
+    // 追加(1.5.4): 前の初期値（50）のままの人は、新しい初期値 0 にそろえる（1回だけ。自分で変えた値はそのまま）
+    if (!(prof.config && prof.config.exp_v)) { if (this.config.exposure_offset === 50) this.config.exposure_offset = 0; this.config.exp_v = 1; }
     const m = await dbGet("model:" + id);
     if (m && m.version === MODEL_VERSION && m.model) { this.model = deserializeModel(m.model); this.modelMeta = m; }
     else { this.model = null; this.modelMeta = null; }
@@ -538,7 +553,8 @@ class App {
   // =====================================================
   // 測定（キャリブレーション）
   // =====================================================
-  startCalibration() {
+  startCalibration(mode = "full") {
+    this.calibMode = CALIB_PLANS[mode] ? mode : "full";
     this.calibIdx = 0; this.calibRound = 1;
     this.tempCalib = clone(DEFAULT_CALIB);
     this.calibDatasetNew = {}; this.calibRoundNew = {};
@@ -547,7 +563,8 @@ class App {
     this.cancelRecording();
     this.setScene("CALIBRATION");
   }
-  curCond() { return CALIB_PLAN[this.calibRound - 1]; }
+  calibPlanArr() { return CALIB_PLANS[this.calibMode] || CALIB_PLANS.full; }
+  curCond() { return this.calibPlanArr()[this.calibRound - 1]; }
   cancelRecording() {
     this.calibPhase = "idle"; this.calibStartT = 0;
     this.calibSamples = []; this.calibFeatSamples = []; this.lastCalibId = -1;
@@ -634,8 +651,8 @@ class App {
     (this.calibRoundNew[`${label}|${this.calibRound}`] ||= []).push(...this.pendingFeats);
     // PC版 1119_2：基準値は1回目（正面・普通）だけで決める。2・3回目は学習データにだけ使う
     if (this.calibRound === 1) this.tempCalib[k] = { ...profile };
-    if (k === "face" && this.calibRound === CALIB_PLAN.length) { this.userCalib.face = { ...this.tempCalib.face }; this.engine.userCalib = this.userCalib; }
-    if (this.calibRound < CALIB_PLAN.length) { this.calibRound++; this.cancelRecording(); this.setScene("CALIBRATION"); return; }
+    if (k === "face" && this.calibRound === this.calibPlanArr().length) { this.userCalib.face = { ...this.tempCalib.face }; this.engine.userCalib = this.userCalib; }
+    if (this.calibRound < this.calibPlanArr().length) { this.calibRound++; this.cancelRecording(); this.setScene("CALIBRATION"); return; }
     this.calibRound = 1; this.calibIdx++;
     if (this.calibIdx < CALIB_STEPS.length) { this.cancelRecording(); this.setScene("CALIBRATION"); return; }
     await this.finishCalibration();
@@ -644,7 +661,7 @@ class App {
     this.trainBg = "tablet"; this.setScene("TRAINING"); this.trainMsg = "判定のモデルを作っています"; this.trainProgress = 0;
     this.userCalib = clone(this.tempCalib);
     this.calibDataset = this.calibDatasetNew; this.calibRoundData = this.calibRoundNew;
-    this.user.calibrated = true; this.user.calib_course = "full"; this.user.calibAt = jst();
+    this.user.calibrated = true; this.user.calib_course = this.calibMode || "full"; this.user.calibAt = jst();
     this.engine.userCalib = this.userCalib;
     await this.saveUser();
     try {
@@ -656,6 +673,9 @@ class App {
     this.logCalib({ at: jst(), kind: "calibration", test_correct: "", missed_dirs: "", model_version: this.modelVersionStr() });
     await dbSet("caliblog:" + this.user.id, this.calibLog);
     if (!ok) { this.popup("学習に失敗しました。もう一度測定してください", 4000, COL.red); this.setScene(this.model ? "SONG_SELECT" : "CALIB_INTRO"); return; }
+    if (this.calibMode === "quick") {   // 修正(1.5.1): サクッとコースはチュートリアルなし。そのまま判定テスト（サウンドチェック）へ
+      this.testState = "IDLE"; this.go("CHECK_DETECTION", "zoom_out"); return;
+    }
     this.tutorialData = { up: [], down: [], left: [], right: [], front: [] };
     this.setScene("TUTORIAL_INTRO");
   }
@@ -728,7 +748,7 @@ class App {
     const raw = e.raw;
     s.text(`ステップ ${this.calibIdx + 1}/${CALIB_STEPS.length}`, 16, 14, FS.sm, "#999");
     const head = k.startsWith("face") ? "舌なし状態の測定" : "舌の初期測定";
-    s.textC(`${head} (${this.calibRound}/${CALIB_PLAN.length}回目)`, 8, FS.lg, COL.yellow, 520);
+    s.textC(this.calibPlanArr().length > 1 ? `${head} (${this.calibRound}/${this.calibPlanArr().length}回目)` : `${head}（${COURSE_NAMES[this.calibMode]}）`, 8, FS.lg, COL.yellow, 520);
     s.textC(step.desc, 50, FS.sm, rgb(230, 230, 230));
     // 説明画像（顔を動かす回は、代わりに点のアニメーション）
     if (cond !== "circle") {
@@ -736,8 +756,11 @@ class App {
       else s.img(k + "_ex", W / 2 - 180, 74, 360, 180);
     }
     const ty = 262;
+    // 修正(1.5.1): 現在値は、測定している方向の値だけ（弱めに出す回にも出す）
+    const oneVal = k in DIR_JA_CAL ? `現在値（${step.name}）: ${raw[k] ?? 0}` + (k === "up" ? `　(唇の比率: ${(raw.lip_ratio ?? 1).toFixed(3)})` : "") : "";
     if (cond === "weak" && !k.startsWith("face")) {
       s.textC(`${step.name}に「1回目より少し弱めに」出して、正面で静止してください`, ty, FS.md, COL.yellow);
+      if (oneVal) s.textC(oneVal, ty + 32, FS.sm, rgb(255, 230, 109));
     } else if (cond === "circle") {
       const what = k === "face" ? "舌をしまったまま" : k === "face_open" ? "口を大きく開けたまま" : `舌を${step.name}に普通の強さで出したまま`;
       s.textC(`${what}、中央の点を鼻先で追ってください`, ty, FS.md, COL.yellow);
@@ -753,9 +776,7 @@ class App {
       s.textC("※この数値パターンが「舌を出していない基準（none）」として学習されます", ty + 32, FS.sm, rgb(200, 200, 200));
     } else {
       s.textC(`${step.name}に出して、正面で静止してください`, ty, FS.md, COL.white);
-      const vec = `現在値: [ 下:${raw.down} 左:${raw.left} 右:${raw.right} 前:${raw.front} ]`;
-      if (k === "up") s.textC(`(唇の比率: ${(raw.lip_ratio ?? 1).toFixed(3)})  ${vec}`, ty + 32, FS.sm, rgb(255, 230, 109));
-      else s.textC(vec, ty + 32, FS.sm, rgb(255, 230, 109));
+      if (oneVal) s.textC(oneVal, ty + 32, FS.sm, rgb(255, 230, 109));
     }
     if (k === "up") s.text("※上方向は唇の厚み比率・重心位置・各方向数値を組み合わせて学習します", 130, 432, 14, rgb(230, 230, 230), "left", 520);
 
@@ -797,7 +818,9 @@ class App {
       s.rrect(bx, by, Math.max(0, Math.min(bw, bw * el / total)), bh, 8, COL.green);
       s.text(`記録中… 残り ${Math.max(0, total - el).toFixed(1)}秒`, W / 2, by + 15, FS.md, COL.white, "center");
     } else if (this.calibPhase === "countdown") {
-      s.text("舌を出して待ってください", W / 2, by + 15, FS.md, COL.white, "center");
+      // 修正(1.5.1): 舌を出さない測定では「舌を出して」と出さない
+      const waitMsg = k === "face" ? "舌はしまったまま、お待ちください" : k === "face_open" ? "口を開けたまま、お待ちください" : "舌を出して待ってください";
+      s.text(waitMsg, W / 2, by + 15, FS.md, COL.white, "center");
     } else {
       s.rrect(bx, by, bw, bh, 8, COL.teal);
       s.text("記録する", W / 2, by + 15, FS.md, COL.bg, "center");
@@ -815,8 +838,8 @@ class App {
 
   draw_CALIB_CONFIRM() {
     const s = this.scr, step = CALIB_STEPS[this.calibIdx];
-    s.textC(`【${step.name}】 の確認 (${this.calibRound}/${CALIB_PLAN.length}回目)`, 60, FS.lg, COL.teal);
-    s.textC(this.calibRound < CALIB_PLAN.length ? `この状態で記録して、${this.calibRound + 1}回目を測定しますか？` : "この状態で記録して、次の方向へ進みますか？", 120, FS.md, COL.white);
+    s.textC(`【${step.name}】 の確認 (${this.calibRound}/${this.calibPlanArr().length}回目)`, 60, FS.lg, COL.teal);
+    s.textC(this.calibRound < this.calibPlanArr().length ? `この状態で記録して、${this.calibRound + 1}回目を測定しますか？` : "この状態で記録して、次の方向へ進みますか？", 120, FS.md, COL.white);
     s.textC(this.calibRound === 1 ? "※1回目の値が、この方向の基準値になります" : "※2・3回目は判定の学習にだけ使います（基準値は1回目のまま）", 150, 15, "#AAA");
     const p = this.pendingCalib || {};
     if (step.key.startsWith("face")) s.textC(`正面・舌なし基準データを ${this.pendingFeats.length} フレーム記録しました`, 180, FS.sm, COL.white);
@@ -1636,10 +1659,31 @@ class App {
     s.text("赤色マスク", 672, 234, 13, COL.red, "center");
     if (!this.started && !this.busy) s.button(580, 260, 190, 48, "カメラを起動", () => this.start(false), { bg: COL.teal, size: FS.sm + 2 });
     s.button(580, 316, 190, 44, `左右反転: ${e.flipInput ? "ON" : "OFF"}`, () => { e.flipInput = !e.flipInput; }, { bg: rgb(90, 90, 90), fg: COL.white, size: FS.sm });
+    // 追加(1.5.2): パスワードを忘れた人のために（前回ログインした ID のパスワードを消す。次のログインで入れたものが新しいパスワードになる）
+    s.button(580, 366, 190, 44, "パスワードを消す", async () => {
+      const id = await this.dbGetSafe("lastUser"); const prof = id ? await dbGet("user:" + id) : null;
+      if (!prof || !prof.passHash) { this.popup("消すパスワードがありません", 2500); return; }
+      delete prof.passHash; await dbSet("user:" + id, prof); if (this.user && this.user.id === id) delete this.user.passHash;
+      this.popup(`${id} のパスワードを消しました。次のログインで入れたものが新しいパスワードになります`, 4500);
+    }, { bg: rgb(140, 60, 60), fg: COL.white, size: FS.sm });
     s.button(660, 420, 120, 48, "戻る", () => this.setScene(this.user && this.model ? "HOME" : "TITLE"), { bg: rgb(80, 80, 80), fg: COL.white });
   }
 }
 
+// 追加(1.5.2): パスワードは元に戻せない形（SHA-256）にしてから保存する
+async function passHash(id, pass) {
+  const text = `tongue-game:${id}:${pass}`;
+  try {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return "s256:" + [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  } catch {
+    let h1 = 0x811c9dc5, h2 = 0x1000193;   // https でないとき（動作確認用）
+    for (const ch of text) { h1 = Math.imul(h1 ^ ch.charCodeAt(0), 16777619); h2 = Math.imul(h2 + ch.charCodeAt(0), 2654435761); }
+    return "f:" + (h1 >>> 0).toString(16) + (h2 >>> 0).toString(16);
+  }
+}
+
+const DIR_JA_CAL = { up: "上", down: "下", left: "左", right: "右", front: "前" };
 // 追加(1.5.0): Tongue Music Club の画面（scenes.js）から使う値
 Object.assign(App.prototype, {
   mockLike() { return MOCK; },
@@ -1649,7 +1693,7 @@ Object.assign(App.prototype, {
 Object.defineProperties(App.prototype, {
   appVersion: { get: () => APP_VERSION }, nameRe: { get: () => NAME_RE }, songs: { get: () => SONGS },
   diffEnabled: { get: () => DIFF_ENABLED }, tutorialSong: { get: () => SONG_TUTORIAL },
-  defaultCalib: { get: () => DEFAULT_CALIB }, calibSteps: { get: () => CALIB_STEPS }, calibPlan: { get: () => CALIB_PLAN },
+  defaultCalib: { get: () => DEFAULT_CALIB }, calibSteps: { get: () => CALIB_STEPS }, calibPlan: { get() { return this.calibPlanArr(); } }, courseNames: { get: () => COURSE_NAMES },
 });
 // 画面の見た目とプレイの流れを店内演出のものに置き換える（判定・得点・ノルマ・記録の処理は上のまま）
 Object.assign(App.prototype, ClubScenes, ClubPlay);
