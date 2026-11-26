@@ -20,6 +20,7 @@ const BTN = {
   calib: R(320, C.CLUB_CARD_ROW_Y, 140, C.CLUB_CARD_H), check: R(472, C.CLUB_CARD_ROW_Y, 120, C.CLUB_CARD_H),
   songBack: R(700, C.CLUB_CARD_ROW_Y, 84, C.CLUB_CARD_H), records: R(604, C.CLUB_CARD_ROW_Y, 84, C.CLUB_CARD_H),   // 修正(1.5.1): 「戻る」をいちばん右に
   diffBack: R(128, C.CLUB_CARD_ROW_Y, 120, C.CLUB_CARD_H), rank: R(260, C.CLUB_CARD_ROW_Y, 190, C.CLUB_CARD_H),
+  gold: R(462, C.CLUB_CARD_ROW_Y, 170, C.CLUB_CARD_H),   // 追加(1.5.5): ロングノーツの数（PC版 1124_5 と同じ位置）
   next: R(W - 170, H - 55, 140, 36), testStart: R(W / 2 - 100, 350, 200, 40), redo: R(W / 2 - 150, 350, 300, 40),
   ret: R(W / 2 - 120, 428, 240, 42), pause: R(W - 70, H - 70, 60, 60),
   resume: R(W / 2 - 120, 150, 240, 50), ruleBtn: R(W / 2 - 120, 220, 240, 50), quit: R(W / 2 - 120, 290, 240, 50),
@@ -310,7 +311,7 @@ export const ClubScenes = {
     lines.push([F.m_md, this.calibRound < n ? `この状態で記録して、${this.calibRound + 1}回目を測定しますか？` : "この状態で記録して、次の方向へ進みますか？", [255, 255, 255], 18]);
     if (n > 1) lines.push([F.m_xs, this.calibRound === 1 ? "※1回目の値が、この方向の基準値になります" : "※2・3回目は判定の学習にだけ使います（基準値は1回目のまま）", [200, 186, 196], 8]);
     if (!k.startsWith("face")) lines.push([F.m_md, `取得値（${step.name}）: ${p[k] ?? 0}`, GOLD, 22]);
-    if (k === "up" && p.lip_ratio_thresh !== undefined) lines.push([F.g_sm, `設定される上唇の専用閾値: ${p.lip_ratio_thresh.toFixed(4)} (測定平均 × 1.15)`, [78, 205, 196], 10]);
+    if (k === "up") lines.push([F.g_xs, "※上方向は、この数値が0でも、唇の形などの他の情報で判定するのでご安心ください", [200, 200, 200], 10]);   // 修正(1.5.5): 閾値は出さず説明（PC版 1124_4 と同じ）
     const total = lines.reduce((a, [f, , , gap]) => a + f.size("あ")[1] + gap, 0);
     let y = Math.round(56 + (262 - 56 - total) / 2);
     for (const [f, t, c, gap] of lines) { y += gap; art.text_c(S, f, t, c, W / 2, y); y += f.size("あ")[1]; }
@@ -567,7 +568,7 @@ export const ClubScenes = {
     menuSongRects().forEach((r, slot) => {
       const idx = start + slot; if (idx >= songs.length || !songs[idx].enabled) return;
       if (this.hov(r)) S.blit(this.hoverBand(r.w, r.h), r.topleft);
-      this.tap(r, () => { this.selSong = idx; this.rankView = false; this.go("DIFF_SELECT", "page_fwd", null, C.CLUB_BOOK_RECT); });
+      this.tap(r, () => { this.selSong = idx; this.rankView = false; this.goldView = false; this.go("DIFF_SELECT", "page_fwd", null, C.CLUB_BOOK_RECT); });
     });
     if (nSpreads > 1) {
       const [pr, nr] = menuTurnRects();
@@ -604,15 +605,63 @@ export const ClubScenes = {
       return s;
     }), [0, 0]);
     if (this.rankView) this.drawRankingPage(S, song);
+    else if (this.goldView) this.drawGoldPage(S, song, rows);
     else menuDiffRects().forEach((r, i) => {
       const [d, en] = rows[i]; if (!en) return;
       if (this.hov(r)) S.blit(this.hoverBand(r.w, r.h), r.topleft);
       this.tap(r, () => { this.selDiff = d; this.placementMode = "play"; this.go("PLACEMENT", "fade"); });
     });
     this.cardBtn(BTN.diffBack, "曲選択へ", () => this.go("SONG_SELECT", "page_back", null, C.CLUB_BOOK_RECT));
-    this.cardBtn(BTN.rank, this.rankView ? "コースを選ぶ" : "みんなのランキング", () => { this.rankView = !this.rankView; if (this.rankView) this.sync.refresh(true); });
+    this.cardBtn(BTN.rank, this.rankView ? "コースを選ぶ" : "みんなのランキング", () => { this.rankView = !this.rankView; this.goldView = false; if (this.rankView) this.sync.refresh(true); });
+    this.cardBtn(BTN.gold, this.goldView ? "コースを選ぶ" : "ロングノーツの数", () => { this.goldView = !this.goldView; this.rankView = false; });   // 追加(1.5.5)
     const st = this.sync.statusText();
     if (st) S.blit(art.text(F.m_xs, st, [232, 176, 192]), [20, 36]);
+  },
+  // 追加(1.5.5): その曲・難易度の譜面にある、5秒以上の舌のロングノーツの数 {方向: 数}。読み込み中は undefined、失敗は null
+  goldCounts(song, d) {
+    const path = (song.beatmaps && song.beatmaps[d]) || song.beatmap;
+    this._goldCache = this._goldCache || new Map();
+    if (!this._goldCache.has(path)) {
+      this._goldCache.set(path, undefined);
+      fetch(path).then((r) => r.json()).then((bm) => {
+        const cnt = Object.fromEntries(DIRS5.map((k) => [k, 0]));
+        for (const n of bm) if (n.type in cnt && (n.duration || 0) >= 5000) cnt[n.type] += 1;
+        this._goldCache.set(path, cnt);
+      }).catch(() => this._goldCache.set(path, null));
+    }
+    return this._goldCache.get(path);
+  },
+  // 追加(1.5.5): 右ページを「ロングノーツの数」にする（PC版 1124_5 の draw_gold_page と同じ見た目）
+  drawGoldPage(S, song, rows) {
+    const art = this.club.art, F = this.club.F, PR = bookPages()[1];
+    const data = rows.map(([d, en]) => [d, en, en ? this.goldCounts(song, d) : null]);
+    const key = JSON.stringify([song.title, data.map(([d, en, c]) => [d, en, c === undefined ? "loading" : c])]);
+    S.blit(art.cached("gold_page", key, () => {
+      const s = new Surface(PR.w, PR.h, { alpha: true });
+      s.blit(art.paper(PR.w, PR.h, 23), [0, 0]); draw.rect(s, [214, 176, 172], new Rect(0, 0, PR.w, PR.h).inflate(-14, -14), 1);
+      s.blit(art.text(F.m_md, "ロングノーツの数", C.CLUB_COL_INK), [22, 18]);
+      const ts = art.text(F.m_xs, "5秒以上（ノルマ）", C.CLUB_COL_INK_SUB); s.blit(ts, [PR.w - 22 - ts.w, 26]);
+      s.fill([196, 150, 150], [22, 58, PR.w - 40, 1]); s.fill([226, 196, 192], [22, 61, PR.w - 40, 1]);
+      const rects = menuDiffRects();
+      data.forEach(([d, en, cnt], i) => {
+        const r = rects[i], x = r.x - PR.x, y = r.y - PR.y, w = r.w;
+        s.blit(art.text(F.m_md, d, en ? (C.CLUB_DIFF_INK[d] || C.CLUB_COL_INK) : C.CLUB_COL_INK_OFF), [x + 12, y + 4]);
+        if (!en || !cnt) s.blit(art.text(F.m_sm, !en ? "準備中" : cnt === undefined ? "読み込み中…" : "譜面が見つかりません", C.CLUB_COL_INK_OFF), [x + 118, y + 10]);
+        else {
+          const vals = DIRS5.map((k) => cnt[k]), tt = art.text(F.m_sm, `合計 ${vals.reduce((a, b) => a + b, 0)}個`, C.CLUB_COL_INK_SUB);
+          s.blit(tt, [x + w - 12 - tt.w, y + 8]);
+          const step = Math.floor((w - 16) / 5);
+          DIRS5.forEach((k, j) => {
+            const ix = x + 10 + j * step, icon = art.small_icon(k, 26);
+            if (icon) s.blit(icon, [ix, y + 36]);
+            const num = art.text(F.g_xs, `×${vals[j]}`, vals[j] ? C.CLUB_COL_INK : C.CLUB_COL_INK_OFF);
+            s.blit(num, [ix + 28, y + 36 + 13 - Math.floor(num.h / 2)]);
+          });
+        }
+        if (i < 2) s.fill([226, 196, 192], [x + 10, r.bottom - PR.y + 2, w - 20, 1]);
+      });
+      return s;
+    }), PR.topleft);
   },
   drawRankingPage(S, song) {
     const art = this.club.art, F = this.club.F, PR = bookPages()[1], sy = this.sync, diffs = ["EASY", "NORMAL", "HARD"];

@@ -12,7 +12,7 @@ import { Sync } from "./sync.js";
 import { SYNC } from "./config.js";
 import { initClub, ClubScenes, ClubPlay } from "./club/scenes.js";   // 追加(1.5.0): Tongue Music Club の演出
 
-export const APP_VERSION = "1.5.4";
+export const APP_VERSION = "1.5.5";
 const MODEL_VERSION = "html2-rfsvm";     // 学習方法を変えたら上げる（保存してある特徴量から自動で学習し直す）
 const FEAT_VERSIONS = ["feat21-v1", "html1-feat21"];   // 特徴量の版（変えたら先頭に足す。古い特徴量は読まずに測り直しへ）
 const MOCK = new URLSearchParams(location.search).has("mock");
@@ -136,6 +136,10 @@ class App {
       up_ex: "assets/img/up_ex.png", down_ex: "assets/img/down_ex.png", left_ex: "assets/img/left_ex.png",
       right_ex: "assets/img/right_ex.png", front_ex: "assets/img/front_ex.png", face_ex: "assets/img/face2_ex.png",
       pose: "assets/img/pose.png",
+      // 追加(1.5.5): 測定の案内の絵（PC版 1124_4 と同じ絵。無いときは今までの1枚絵）
+      guide_face_rest: "assets/img/guide/guide_face_rest.png", guide_open: "assets/img/guide/guide_open.png",
+      guide_down: "assets/img/guide/guide_down.png", guide_left: "assets/img/guide/guide_left.png", guide_right: "assets/img/guide/guide_right.png",
+      guide_front: "assets/img/guide/guide_front.png", guide_up: "assets/img/guide/guide_up.png",
     }).then(() => initClub(this)).catch((e) => { console.error(e); this.initError = "画面の準備に失敗しました。再読み込みしてください"; });
     requestAnimationFrame((t) => this.frame(t));
   }
@@ -749,15 +753,21 @@ class App {
     s.text(`ステップ ${this.calibIdx + 1}/${CALIB_STEPS.length}`, 16, 14, FS.sm, "#999");
     const head = k.startsWith("face") ? "舌なし状態の測定" : "舌の初期測定";
     s.textC(this.calibPlanArr().length > 1 ? `${head} (${this.calibRound}/${this.calibPlanArr().length}回目)` : `${head}（${COURSE_NAMES[this.calibMode]}）`, 8, FS.lg, COL.yellow, 520);
-    s.textC(step.desc, 50, FS.sm, rgb(230, 230, 230));
+    // 修正(1.5.5): 弱めに出す回・顔を動かす回は「限界まで」と出さない（PC版 1124_4 と同じ）
+    let desc = step.desc;
+    if (!k.startsWith("face") && cond === "weak") desc = `舌を【${step.name}】に、1回目より少し弱めに出した状態で記録してください`;
+    else if (!k.startsWith("face") && cond === "circle") desc = `舌を【${step.name}】に普通の強さで出したまま、顔を動かして記録してください`;
+    s.textC(desc, 50, FS.sm, rgb(230, 230, 230));
     // 説明画像（顔を動かす回は、代わりに点のアニメーション）
-    if (cond !== "circle") {
+    // 修正(1.5.5): ① → ② → ③ の絵を並べる（絵が読み込めていないときだけ、今までの1枚絵）
+    if (cond !== "circle" && !this.drawCalibGuide(k, 74, cond)) {
       if (k.startsWith("face")) s.img("face_ex", W / 2 - 90, 74, 180, 180);
       else s.img(k + "_ex", W / 2 - 180, 74, 360, 180);
     }
     const ty = 262;
     // 修正(1.5.1): 現在値は、測定している方向の値だけ（弱めに出す回にも出す）
-    const oneVal = k in DIR_JA_CAL ? `現在値（${step.name}）: ${raw[k] ?? 0}` + (k === "up" ? `　(唇の比率: ${(raw.lip_ratio ?? 1).toFixed(3)})` : "") : "";
+    // 修正(1.5.5): 上方向も唇の比率は出さず、現在値の下に説明（PC版 1124_4 と同じ）
+    const oneVal = k in DIR_JA_CAL ? `現在値（${step.name}）: ${raw[k] ?? 0}` : "";
     if (cond === "weak" && !k.startsWith("face")) {
       s.textC(`${step.name}に「1回目より少し弱めに」出して、正面で静止してください`, ty, FS.md, COL.yellow);
       if (oneVal) s.textC(oneVal, ty + 32, FS.sm, rgb(255, 230, 109));
@@ -778,7 +788,6 @@ class App {
       s.textC(`${step.name}に出して、正面で静止してください`, ty, FS.md, COL.white);
       if (oneVal) s.textC(oneVal, ty + 32, FS.sm, rgb(255, 230, 109));
     }
-    if (k === "up") s.text("※上方向は唇の厚み比率・重心位置・各方向数値を組み合わせて学習します", 130, 432, 14, rgb(230, 230, 230), "left", 520);
 
     // 警告
     let warn = e.state.faceWarning;
@@ -788,6 +797,8 @@ class App {
     if (!e.faceFound && this.calibPhase !== "idle") warn = "顔が見つかりません";
     if (warn) s.textC(warn, 318, FS.md, COL.red);
     else if (this.calibMsg) s.textC(this.calibMsg, 318, FS.md, COL.red);
+    // 修正(1.5.5): 上方向は、現在値のすぐ下に説明（警告が出ているときは警告を優先）
+    else if (k === "up" && cond !== "circle") s.textC("※上方向は、この数値が0でも、唇の形など ほかの情報で判定するので大丈夫です", 318, 14, rgb(210, 210, 210));
 
     // 顔を動かす回：鼻先で追う点
     if (cond === "circle") {
@@ -827,6 +838,36 @@ class App {
       s.hotspot(bx, by, bw, bh, () => this.startRecording());
     }
     s.button(660, 420, 120, 48, "やめる", () => this.quitCalibration(), { bg: rgb(80, 80, 80), fg: COL.white });
+  }
+  // 追加(1.5.5): 測定の案内（①口を開ける → ②舌を出す → ③「記録する」を押す）。絵が足りなければ false
+  drawCalibGuide(k, top, cond) {
+    const s = this.scr, ja = DIR_JA_CAL[k];
+    const press = ["tap", ["「記録する」を", "押す"]];
+    let steps;
+    if (k === "face") steps = [["guide_face_rest", ["舌をしまって", "軽く口を開ける"]], press];
+    else if (k === "face_open") steps = [["guide_open", ["舌は出さずに", "口を大きく開ける"]], press];
+    else {
+      const how = { down: ["アゴにつけるように", "限界まで下に出す"], up: ["鼻につけるように", "限界まで上に出す"] }[k] || ["限界まで", `${ja}に出す`];
+      steps = [["guide_open", ["大きく口を開ける"]], ["guide_" + k, cond === "weak" ? ["1回目より少し", `弱めに${ja}に出す`] : how], press];
+    }
+    const ok = (n) => { const im = s.images[n]; return n === "tap" || (im && im.complete && im.naturalWidth); };
+    if (!steps.every(([n]) => ok(n))) return false;
+    const pw = 84, ph = 127, gapX = 168, n = steps.length, x0 = W / 2 - (n - 1) * gapX / 2, nums = "①②③";
+    steps.forEach(([img, caps], i) => {
+      const cx = x0 + i * gapX, x = cx - pw / 2;
+      s.ctx.fillStyle = "rgba(12,4,8,0.9)"; s.ctx.fillRect(x + 3, top + 4, pw, ph);   // 影
+      if (img === "tap") {   // ③は絵の代わりに、記録ボタンと指先を描く
+        s.rrect(x, top, pw, ph, 4, rgb(34, 24, 30));
+        s.rrect(x + 8, top + 50, pw - 16, 30, 6, COL.teal);
+        s.text("記録する", cx, top + 56, 15, COL.bg, "center");
+        s.circle(cx + 14, top + 84, 11, "rgba(255,224,196,0.95)", rgb(150, 110, 90), 2);
+        s.circle(cx + 14, top + 84, 20, null, "rgba(255,255,255,0.55)", 2);
+      } else s.img(img, x, top, pw, ph);
+      s.rrect(x - 2, top - 2, pw + 4, ph + 4, 4, null, rgb(232, 176, 192), 2);
+      caps.forEach((cap, j) => s.text((j === 0 ? nums[i] : "  ") + cap, cx, top + ph + 6 + j * 18, 14, COL.white, "center"));
+      if (i < n - 1) { const ax = cx + gapX / 2, ay = top + ph / 2; s.poly([[ax - 9, ay - 14], [ax + 11, ay], [ax - 9, ay + 14]], rgb(255, 120, 170)); }
+    });
+    return true;
   }
   quitCalibration() {
     this.cancelRecording();
