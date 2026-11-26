@@ -12,7 +12,7 @@ import { Sync } from "./sync.js";
 import { SYNC } from "./config.js";
 import { initClub, ClubScenes, ClubPlay } from "./club/scenes.js";   // 追加(1.5.0): Tongue Music Club の演出
 
-export const APP_VERSION = "1.5.6";
+export const APP_VERSION = "1.5.7";
 const MODEL_VERSION = "html2-rfsvm";     // 学習方法を変えたら上げる（保存してある特徴量から自動で学習し直す）
 const FEAT_VERSIONS = ["feat21-v1", "html1-feat21"];   // 特徴量の版（変えたら先頭に足す。古い特徴量は読まずに測り直しへ）
 const MOCK = new URLSearchParams(location.search).has("mock");
@@ -266,7 +266,7 @@ class App {
     if (prof && prof.passHash && prof.passHash !== ph) { this.loginMsg = "エラー：パスワードが違います"; this.loginMsgCol = COL.red; this.passInput.value = ""; return; }
     this.showIdForm(false);
     if (!(await this.loadUser(id))) await this.createUser(id);
-    if (!this.user.passHash) { this.user.passHash = ph; await this.saveUser(); this.popup("パスワードを登録しました。忘れないようにしてください", 3500); }
+    if (!this.user.passHash) { this.user.passHash = ph; await this.saveUser(); this.popup("パスワードを登録しました", 3000); }
     await dbSet("lastUser", id);
     this.afterLogin();
   }

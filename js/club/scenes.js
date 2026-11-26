@@ -224,10 +224,9 @@ export const ClubScenes = {
     // 修正(1.5.2): PC版と同じく、ID とパスワード
     S.blit(art.text(F.m_sm, "参加者ID（担当者から伝えられたもの）:", CREAM), [BTN.user.x, BTN.user.y - 24]);
     draw.rect(S, [22, 6, 14], BTN.user, 0, 6); draw.rect(S, PINK, BTN.user, 2, 6);
-    S.blit(art.text(F.m_sm, "パスワード（半角英数）:", CREAM), [BTN.pass.x, BTN.pass.y - 24]);
+    S.blit(art.text(F.m_sm, "パスワード（担当者から伝えられたもの）:", CREAM), [BTN.pass.x, BTN.pass.y - 24]);
     draw.rect(S, [22, 6, 14], BTN.pass, 0, 6); draw.rect(S, PINK, BTN.pass, 2, 6);
     this.appBtn(BTN.login, "ログイン / 新規登録", C.CLUB_COL_PINK_DEEP, [40, 8, 20], () => this.submitId(), F.m_md);
-    art.text_c(S, F.m_xs, "はじめてのときに入れたものがパスワードになります。忘れないでください", [214, 190, 200], W / 2, BTN.login.bottom + 8);
     this.cardBtn(BTN.loginBack, "入口へ戻る", () => this.go("TITLE", "pan_left"), null, "wood");
   },
   async goLogin() {

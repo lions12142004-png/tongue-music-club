@@ -1,6 +1,6 @@
 {
-  "name": "舌ゲーム",
-  "short_name": "舌ゲーム",
+  "name": "TMC2026",
+  "short_name": "TMC2026",
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",
