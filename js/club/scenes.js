@@ -671,19 +671,28 @@ export const ClubScenes = {
       const s = new Surface(PR.w, PR.h, { alpha: true });
       s.blit(art.paper(PR.w, PR.h, 23), [0, 0]); draw.rect(s, [214, 176, 172], new Rect(0, 0, PR.w, PR.h).inflate(-14, -14), 1);
       s.blit(art.text(F.m_md, "みんなのランキング", C.CLUB_COL_INK), [22, 18]);
-      const t = sy.rankingTime(), sub = t ? t.slice(5, 16).replace("-", "/") + " 時点" + (sy.online === false ? "（オフライン）" : "") : "";
-      if (sub) { const tsf = art.text(F.m_xs, sub, C.CLUB_COL_INK_SUB); s.blit(tsf, [PR.w - 22 - tsf.w, PR.h - 30]); }
+      // 修正(1.5.6): 時刻は3位と重ならないよう、見出しの右上へ（オフラインはその下）
+      const t = sy.rankingTime();
+      if (t) { const tsf = art.text(F.g_xs, t.slice(5, 16).replace("-", "/"), C.CLUB_COL_INK_SUB); s.blit(tsf, [PR.w - 22 - tsf.w, 16]); }
+      if (t && sy.online === false) { const of = art.text(F.g_xs, "オフライン", C.CLUB_COL_STAMP); s.blit(of, [PR.w - 22 - of.w, 36]); }
       s.fill([196, 150, 150], [22, 58, PR.w - 40, 1]); s.fill([226, 196, 192], [22, 61, PR.w - 40, 1]);
       const rects = menuDiffRects();
       tops.forEach(([d, top], i) => {
         const r = rects[i], x = r.x - PR.x, y = r.y - PR.y, w = r.w;
-        s.blit(art.text(F.m_md, d, C.CLUB_DIFF_INK[d] || C.CLUB_COL_INK), [x + 12, y + 6]);
+        s.blit(art.text(F.m_sm, d, C.CLUB_DIFF_INK[d] || C.CLUB_COL_INK), [x + 12, y + 6]);   // 修正(1.5.6): 名前の欄を広げるため、難易度名は小さめ
+        const LX = 92;
         const msg = !sy.enabled ? "通信の設定がありません" : top === null ? (sy.online === false ? "読み込めませんでした" : "読み込み中…") : !top.length ? "まだ記録がありません" : null;
-        if (msg) s.blit(art.text(F.m_sm, msg, C.CLUB_COL_INK_SUB), [x + 118, y + 26]);
+        if (msg) s.blit(art.text(F.m_sm, msg, C.CLUB_COL_INK_SUB), [x + LX, y + 26]);
         else for (let j = 0; j < 3; j++) {
           const yy = y + 4 + j * 22, e = top[j];
-          if (e) art.leader_line(s, F.m_sm, `${e.rank}位 ${e.name}`, Number(e.score).toLocaleString("en-US"), x + 118, yy, w - 130, (e.name === uid || e.name === myName) ? C.CLUB_COL_STAMP : C.CLUB_COL_INK);
-          else s.blit(art.text(F.m_sm, `${j + 1}位 —`, C.CLUB_COL_INK_OFF), [x + 118, yy]);
+          if (e) {   // 修正(1.5.6): 名前と得点が重ならないよう、収まらなければ小さい字 → それでも無理なら名前を「…」で切る
+            const sc = Number(e.score).toLocaleString("en-US"), avail = w - LX - 12, col = (e.name === uid || e.name === myName) ? C.CLUB_COL_STAMP : C.CLUB_COL_INK;
+            const fits = (f, nm) => f.size(`${e.rank}位 ${nm}`)[0] + f.size(sc)[0] + 14 <= avail;
+            let f = fits(F.m_sm, e.name) ? F.m_sm : F.m_xs, nm = String(e.name);
+            while (nm.length > 1 && !fits(f, nm === String(e.name) ? nm : nm + "…")) nm = nm.slice(0, -1);
+            art.leader_line(s, f, `${e.rank}位 ${nm === String(e.name) ? nm : nm + "…"}`, sc, x + LX, yy + (f === F.m_sm ? 0 : 1), avail, col);
+          }
+          else s.blit(art.text(F.m_sm, `${j + 1}位 —`, C.CLUB_COL_INK_OFF), [x + LX, yy]);
         }
         if (i < 2) s.fill([226, 196, 192], [x + 10, r.bottom - PR.y + 2, w - 20, 1]);
       });
