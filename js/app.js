@@ -12,7 +12,7 @@ import { Sync } from "./sync.js";
 import { SYNC } from "./config.js";
 import { initClub, ClubScenes, ClubPlay } from "./club/scenes.js";   // 追加(1.5.0): Tongue Music Club の演出
 
-export const APP_VERSION = "1.5.11";
+export const APP_VERSION = "1.5.12";
 const MODEL_VERSION = "html2-rfsvm";     // 学習方法を変えたら上げる（保存してある特徴量から自動で学習し直す）
 const FEAT_VERSIONS = ["feat21-v1", "html1-feat21"];   // 特徴量の版（変えたら先頭に足す。古い特徴量は読まずに測り直しへ）
 const MOCK = new URLSearchParams(location.search).has("mock");
@@ -26,7 +26,7 @@ const DEFAULT_CALIB = {
   right: { up: 0, down: 0, left: 0, right: 10, front: 30 },
   front: { up: 0, down: 0, left: 0, right: 0, front: 50 },
 };
-const DEFAULT_CONFIG = { speed_mult: 5, offset: 0, bgm_vol: 5, se_vol: 3, exposure_offset: 0, exp_v: 1 };   // 修正(1.5.4): 赤色検知の厳しさの初期値 50 → 0（PC版と同じ）
+const DEFAULT_CONFIG = { speed_mult: 5, offset: 0, bgm_vol: 5, se_vol: 1, exposure_offset: 0, exp_v: 1, se_v: 1 };   // 修正(1.5.12): SE音量の初期値 3 → 1   // 修正(1.5.4): 赤色検知の厳しさの初期値 50 → 0（PC版と同じ）
 const CALIB_SKIP_SEC = 0.5, CALIB_SEC_R1 = 2.5, CIRCLE_SEC = 3.0, CALIB_SEC_R2 = CALIB_SKIP_SEC + CIRCLE_SEC;
 // 修正(1.5.1): PC版 1124_1 と同じく、サクッとコース（正面で静止・限界まで出す 1回だけ。チュートリアルなし）を追加
 const CALIB_PLANS = { quick: ["static"], full: ["static", "weak", "circle"] };
@@ -48,11 +48,22 @@ const HOLD_BREAK_MS = 2000;    // ロングノーツの途中で、正しい方�
 const INT_KEYS = new Set(["up", "down", "left", "right", "front"]);
 // 曲（PC版の SONGS の最初の3曲と同じ名前。名前が同じなら、PC とスマホで同じランキングになる）
 // 修正(1.5.0): PC版 1122_2 と同じく、メニュー表に12曲（4曲目からは「準備中」）
-const SONGS_READY = 1;   // 修正(1.5.4): いまは「エリーゼのために」だけ遊べる（ほかは準備中）
-const SONGS = ["エリーゼのために", "仮の曲2", "仮の曲3", "仮の曲4", "仮の曲5", "仮の曲6", "仮の曲7", "仮の曲8", "仮の曲9", "仮の曲10", "仮の曲11", "仮の曲12"]
-  .map((title, i) => ({ title, audio: "assets/audio/elise2.m4a", beatmap: "assets/beatmaps/track6.json", end_time: 120000, enabled: i < SONGS_READY }));
+// 修正(1.5.12): 1曲目 エリーゼのために・2曲目 トルコ行進曲を、3つの難易度で遊べるようにした（3曲目からは準備中）
+//   beatmaps = 難易度ごとの譜面（無い難易度は beatmap を使う）
+const BM = "assets/beatmaps/";
+const SONGS_PLAYABLE = [
+  { title: "エリーゼのために", audio: "assets/audio/elise2.m4a", beatmap: BM + "track6.json", end_time: 120000,
+    beatmaps: { EASY: BM + "track6_easy.json", NORMAL: BM + "track6.json", HARD: BM + "track6_hard.json" } },
+  { title: "トルコ行進曲", audio: "assets/audio/turkish.m4a", beatmap: BM + "track8.json", end_time: 91000,
+    beatmaps: { EASY: BM + "track8_easy.json", NORMAL: BM + "track8.json", HARD: BM + "track8_hard.json" } },
+];
+const SONGS = SONGS_PLAYABLE.map((s) => ({ ...s, enabled: true })).concat(
+  ["仮の曲3", "仮の曲4", "仮の曲5", "仮の曲6", "仮の曲7", "仮の曲8", "仮の曲9", "仮の曲10", "仮の曲11", "仮の曲12"]
+    .map((title) => ({ title, audio: "assets/audio/elise2.m4a", beatmap: BM + "track6.json", end_time: 120000, enabled: false })));
+// 追加(1.5.12): その曲・難易度の譜面ファイル
+export const beatmapFor = (song) => (song.beatmaps && song.beatmaps[song.diff || "NORMAL"]) || song.beatmap;
 const DIFFS = ["EASY", "NORMAL", "HARD"];
-const DIFF_ENABLED = { EASY: false, NORMAL: true, HARD: false };   // PC版と同じく NORMAL のみ
+const DIFF_ENABLED = { EASY: true, NORMAL: true, HARD: true };   // 修正(1.5.12): 3つとも遊べる
 const DIFF_COL = { EASY: "#2ECC71", NORMAL: "#4ECDC4", HARD: "#E74C3C" };
 const SONG_TUTORIAL = { title: "くるみ割り人形", diff: "NORMAL", audio: "assets/audio/my_track.mp3", beatmap: "assets/beatmaps/track_tyuto.json", end_time: 40000 };
 const DIR_JA = { up: "上", down: "下", left: "左", right: "右", front: "前" };
@@ -296,6 +307,8 @@ class App {
     this.config = { ...DEFAULT_CONFIG, ...(prof.config || {}) };
     // 追加(1.5.4): 前の初期値（50）のままの人は、新しい初期値 0 にそろえる（1回だけ。自分で変えた値はそのまま）
     if (!(prof.config && prof.config.exp_v)) { if (this.config.exposure_offset === 50) this.config.exposure_offset = 0; this.config.exp_v = 1; }
+    // 追加(1.5.12): SE音量が前の初期値（3）のままの人は、新しい初期値 1 にそろえる（1回だけ。自分で変えた値はそのまま）
+    if (!(prof.config && prof.config.se_v)) { if (this.config.se_vol === 3) this.config.se_vol = 1; this.config.se_v = 1; }
     const m = await dbGet("model:" + id);
     if (m && m.version === MODEL_VERSION && m.model) { this.model = deserializeModel(m.model); this.modelMeta = m; }
     else { this.model = null; this.modelMeta = null; }
@@ -930,7 +943,7 @@ class App {
     this.audio.unlock();
     this.setScene("LOADING");
     try {
-      const [bm, buf] = await Promise.all([fetch(song.beatmap).then((r) => r.json()), this.audio.load(song.audio)]);
+      const [bm, buf] = await Promise.all([fetch(beatmapFor(song)).then((r) => r.json()), this.audio.load(song.audio)]);   // 修正(1.5.12): 難易度ごとの譜面
       this.beatmap = bm.map((n) => {
         const note = { time: n.time, type: n.type, active: true };
         if ("duration" in n) { note.duration = n.duration; note.isHolding = false; note.missMs = 0; }

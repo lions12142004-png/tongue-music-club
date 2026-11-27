@@ -1,11 +1,12 @@
 // オフラインでも遊べるように、素材とモデルをキャッシュする
 //   ファイルを更新したら VERSION を上げる（古いキャッシュは自動で消える）
-const VERSION = "tongue-game-1.5.11";
+const VERSION = "tongue-game-1.5.12";
 const CORE = [
   "./", "index.html", "css/style.css", "manifest.webmanifest",
   "js/app.js", "js/ui.js", "js/vision.js", "js/rf.js", "js/svm.js", "js/model.js", "js/sync.js", "js/config.js", "js/train-worker.js", "js/storage.js", "js/audio.js", "js/mock.js",
   "js/club/pg.js", "js/club/cfg.js", "js/club/crowd.js", "js/club/title.js", "js/club/art.js", "js/club/stage.js", "js/club/sound.js", "js/club/scenes.js",
   "assets/beatmaps/track6.json", "assets/beatmaps/track_tyuto.json",
+  "assets/beatmaps/track6_easy.json", "assets/beatmaps/track6_hard.json", "assets/beatmaps/track8.json", "assets/beatmaps/track8_easy.json", "assets/beatmaps/track8_hard.json",
   "assets/audio/elise2.m4a", "assets/audio/my_track.mp3",
   "assets/img/up2.png", "assets/img/down2.png", "assets/img/left2.png", "assets/img/right2.png", "assets/img/front2.png",
   "assets/img/no.png", "assets/img/shoulder_l2.png", "assets/img/shoulder_r2.png", "assets/img/shoulder_no.png",

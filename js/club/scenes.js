@@ -925,7 +925,7 @@ export const ClubPlay = {
     this.go("OPENING", "fade");
     try {
       await new Promise((r) => setTimeout(r, C.CLUB_OPEN_LOAD_AT * 1000));   // BGM が消えてから読み込む
-      const [bm, buf] = await Promise.all([fetch(song.beatmap).then((r) => r.json()), this.audio.load(song.audio)]);
+      const [bm, buf] = await Promise.all([fetch((song.beatmaps && song.beatmaps[song.diff || "NORMAL"]) || song.beatmap).then((r) => r.json()), this.audio.load(song.audio)]);   // 修正(1.5.12): 難易度ごとの譜面
       this.beatmap = bm.map((n) => { const note = { time: n.time, type: n.type, active: true }; if ("duration" in n) { note.duration = n.duration; note.isHolding = false; note.missMs = 0; } return note; });
       this.songBuf = buf;
     } catch (e) { console.error(e); this.loadFailed = true; }
