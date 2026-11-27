@@ -12,7 +12,7 @@ import { Sync } from "./sync.js";
 import { SYNC } from "./config.js";
 import { initClub, ClubScenes, ClubPlay } from "./club/scenes.js";   // 追加(1.5.0): Tongue Music Club の演出
 
-export const APP_VERSION = "1.5.7";
+export const APP_VERSION = "1.5.11";
 const MODEL_VERSION = "html2-rfsvm";     // 学習方法を変えたら上げる（保存してある特徴量から自動で学習し直す）
 const FEAT_VERSIONS = ["feat21-v1", "html1-feat21"];   // 特徴量の版（変えたら先頭に足す。古い特徴量は読まずに測り直しへ）
 const MOCK = new URLSearchParams(location.search).has("mock");
@@ -40,6 +40,11 @@ const CALIB_STEPS = [
   { key: "front", name: "前", desc: "舌を【前】に限界まで突き出した状態で記録してください", min_val: 15 },
   { key: "up", name: "上", desc: "舌を【上】に限界まで突き出した状態で記録してください", min_val: 2 },
 ];
+// 追加(1.5.9): 判定の幅（ミリ秒）。ノーツが判定ラインに来る時刻を 0 として
+const JUDGE_EARLY_MS = 200;    // 200ms前から判定
+const JUDGE_LATE_MS = 700;     // 700ms後まで判定（これより遅れたら MISS。修正(1.5.10): 1000 → 700。1.5.8 までは 400）
+const JUDGE_EXCELLENT_MS = 100; // ±100ms 以内なら Excellent（効果音もこのときだけ。1.5.11）
+const HOLD_BREAK_MS = 2000;    // ロングノーツの途中で、正しい方向が2秒続けて途切れたら MISS（今までは 1000）
 const INT_KEYS = new Set(["up", "down", "left", "right", "front"]);
 // 曲（PC版の SONGS の最初の3曲と同じ名前。名前が同じなら、PC とスマホで同じランキングになる）
 // 修正(1.5.0): PC版 1122_2 と同じく、メニュー表に12曲（4曲目からは「準備中」）
@@ -822,19 +827,25 @@ class App {
     }
     // 記録ボタン
     const bx = W / 2 - 160, by = 350, bw = 320, bh = 56;
+    // 修正(1.5.8): ボタンの中の文字がはみ出さないよう、入りきらなければ小さくして上下の真ん中に置く
+    const btnText = (t, col) => {
+      let sz = FS.md;
+      while (sz > 12 && s.measure(t, sz) > bw - 24) sz -= 1;
+      s.text(t, W / 2, by + Math.round((bh - sz) / 2) - 1, sz, col, "center");
+    };
     s.rrect(bx, by, bw, bh, 8, rgb(80, 80, 80));
     if (this.calibPhase === "recording") {
       const total = cond === "circle" ? CALIB_SEC_R2 : CALIB_SEC_R1;
       const el = performance.now() / 1000 - this.calibStartT;
       s.rrect(bx, by, Math.max(0, Math.min(bw, bw * el / total)), bh, 8, COL.green);
-      s.text(`記録中… 残り ${Math.max(0, total - el).toFixed(1)}秒`, W / 2, by + 15, FS.md, COL.white, "center");
+      btnText(`記録中… 残り ${Math.max(0, total - el).toFixed(1)}秒`, COL.white);
     } else if (this.calibPhase === "countdown") {
       // 修正(1.5.1): 舌を出さない測定では「舌を出して」と出さない
       const waitMsg = k === "face" ? "舌はしまったまま、お待ちください" : k === "face_open" ? "口を開けたまま、お待ちください" : "舌を出して待ってください";
-      s.text(waitMsg, W / 2, by + 15, FS.md, COL.white, "center");
+      btnText(waitMsg, COL.white);
     } else {
       s.rrect(bx, by, bw, bh, 8, COL.teal);
-      s.text("記録する", W / 2, by + 15, FS.md, COL.bg, "center");
+      btnText("記録する", COL.bg);
       s.hotspot(bx, by, bw, bh, () => this.startRecording());
     }
     s.button(660, 420, 120, 48, "やめる", () => this.quitCalibration(), { bg: rgb(80, 80, 80), fg: COL.white });
@@ -1196,11 +1207,12 @@ class App {
       if ("duration" in note) {
         const tail = adj + note.duration - elapsed;
         if (!note.isHolding) {
-          if (td > -400 && td < 200 && ok) {
+          if (td > -JUDGE_LATE_MS && td < JUDGE_EARLY_MS && ok) {   // 修正(1.5.9)
             note.isHolding = true; note.earned = 0; note.missMs = 0;
             if (this.play) this.play._td.push(td);   // 追加(1.3.2): 取ったときのずれ（＋＝早い）
-            this.feedback.x = p3d(li, 1.0)[0]; setFb("Hold", 10); this.audio.playSE();
-          } else if (td <= -400) {
+            this.feedback.x = p3d(li, 1.0)[0]; setFb("Hold", 10);
+            if (Math.abs(td) <= JUDGE_EXCELLENT_MS) this.audio.playSE(Math.max(0, td) / 1000);   // 修正(1.5.11): ±100ms 以内のときだけ、ノーツの時刻に合わせて鳴らす
+          } else if (td <= -JUDGE_LATE_MS) {   // 修正(1.5.9)
             note.active = false; this.missCount++; this.combo = 0; setFb("MISS", 30);
           }
         } else {
@@ -1232,17 +1244,19 @@ class App {
                 if (tk) this.addNorma(tk);
               }
             } else { this.missCount++; this.combo = 0; setFb("MISS", 30); }
-          } else if (note.missMs > 1000) {   // 3. 不正解が1秒続いたらホールド切れ
+          } else if (note.missMs > HOLD_BREAK_MS) {   // 3. 不正解が2秒続いたらホールド切れ（修正(1.5.9): 1秒 → 2秒）
             note.active = false; note.isHolding = false; this.missCount++; this.combo = 0; setFb("MISS", 30);
           }
         }
       } else {
-        if (td > -400 && td < 200) {
+        if (td > -JUDGE_LATE_MS && td < JUDGE_EARLY_MS) {   // 修正(1.5.9)
           if (ok) {
             note.active = false; this.combo++;
-            this.feedback.x = p3d(li, 1.0)[0]; this.audio.playSE();
+            this.feedback.x = p3d(li, 1.0)[0];
+            // 修正(1.5.11): 効果音は Excellent のときだけ。早めに取ったときは、ノーツの時刻まで待って鳴らす（BGM とずれないように）
+            if (Math.abs(td) <= JUDGE_EXCELLENT_MS) this.audio.playSE(Math.max(0, td) / 1000);
             if (this.play) this.play._td.push(td);   // 追加(1.3.2): 取ったときのずれ（＋＝早い）
-            if (Math.abs(td) <= 100) {
+            if (Math.abs(td) <= JUDGE_EXCELLENT_MS) {
               this.score += st.isFullPower ? maxP : maxP * 0.8;
               setFb(st.isFullPower ? "Excellent!! (MAX)" : "Excellent!!!", 30);
               if (this.play) this.play.excellent++;
@@ -1253,7 +1267,7 @@ class App {
             }
             if (this.play) { if (st.isFullPower) this.play.max_count++; if (nType.startsWith("shoulder")) this.play.shoulder_hits++; }
           }
-        } else if (td <= -400) {
+        } else if (td <= -JUDGE_LATE_MS) {   // 修正(1.5.9)
           note.active = false; this.missCount++; this.combo = 0;
           this.feedback.x = p3d(li, 1.0)[0]; setFb("MISS", 30);
         }

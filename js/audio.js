@@ -43,9 +43,10 @@ export class AudioEngine {
   }
 
   // 効果音（audio_001.mp3 が無いときは短い音を合成）
-  playSE() {
+  //   追加(1.5.11): delaySec 秒後に鳴らす（早めに取ったノーツを、ちょうどの時刻に鳴らすため）
+  playSE(delaySec = 0) {
     if (!this.ctx) return;
-    const t = this.ctx.currentTime;
+    const t = this.ctx.currentTime + Math.max(0, Math.min(0.3, delaySec || 0));
     if (this.seBuffer) {
       const s = this.ctx.createBufferSource(); s.buffer = this.seBuffer; s.connect(this.seGain); s.start(t); return;
     }
