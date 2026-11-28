@@ -975,19 +975,16 @@ export const ClubScenes = {
       else if (boards && missing === boards) msg = sy.online === false ? "読み込めませんでした" : "読み込み中…";
       else if (!rows.length) msg = "まだ1位の記録がありません";
       if (msg) { art.text_c(s, F.m_md, msg, sub, W / 2, y0 + 60); return s; }
-      rows.slice(0, 9).forEach(([rank, name, n, wh], j) => {
+      rows.slice(0, 9).forEach(([rank, name, n], j) => {
         const y = y0 + j * 28, col = (name === uid || name === myName) ? C.CLUB_COL_STAMP : ink;
-        if (rank <= 3) this.drawCrown(s, P.x + 24, y + 3, [[206, 150, 20], [160, 160, 176], [176, 110, 60]][rank - 1]);
-        s.blit(art.text(F.m_sm, `${rank}位`, col), [P.x + 54, y + 2]);
-        // 名前が長いときは「…」で切る（×の数と重ならないように）
+        if (rank <= 3) this.drawCrown(s, P.x + 97, y + 3, [[206, 150, 20], [160, 160, 176], [176, 110, 60]][rank - 1]);
+        s.blit(art.text(F.m_sm, `${rank}位`, col), [P.x + 127, y + 2]);
+        // 名前が長いときは「…」で切る（×の数と重ならないように）。修正(1.5.15): 曲名・難易度は出さず、表を紙の真ん中に寄せた
         let nm = name, nt = art.text(F.m_sm, nm, col);
-        while (nt.w > 180 && nm.length > 1) { nm = nm.slice(0, -1); nt = art.text(F.m_sm, nm + "…", col); }
-        s.blit(nt, [P.x + 100, y + 2]);
-        const ct = art.text(F.m_md, `×${n}`, col); s.blit(ct, [P.x + 330 - ct.w, y - 2]);
-        let wt = wh.join("、"), wsf = art.text(F.m_xs, wt, sub); const maxw = P.right - 24 - (P.x + 346);
-        while (wsf.w > maxw && wt.length > 1) { wt = wt.slice(0, -1); wsf = art.text(F.m_xs, wt + "…", sub); }
-        s.blit(wsf, [P.x + 346, y + 4]);
-        if (j < Math.min(rows.length, 9) - 1) s.fill([232, 208, 204], [P.x + 24, y + 25, P.w - 48, 1]);
+        while (nt.w > 300 && nm.length > 1) { nm = nm.slice(0, -1); nt = art.text(F.m_sm, nm + "…", col); }
+        s.blit(nt, [P.x + 173, y + 2]);
+        const ct = art.text(F.m_md, `×${n}`, col); s.blit(ct, [P.x + 543 - ct.w, y - 2]);
+        if (j < Math.min(rows.length, 9) - 1) s.fill([232, 208, 204], [P.x + 97, y + 25, 446, 1]);
       });
       if (rows.length > 9) art.text_c(s, F.m_xs, `ほか ${rows.length - 9}人`, sub, W / 2, y0 + 9 * 28);
       return s;
