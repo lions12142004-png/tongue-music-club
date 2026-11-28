@@ -16,9 +16,11 @@ const R = (x, y, w, h) => new Rect(x, y, w, h);
 const BTN = {
   title: R(W / 2 - 110, C.TITLE_BTN_Y, 220, 50),
   user: R(W / 2 - 140, 145, 280, 44), pass: R(W / 2 - 140, 235, 280, 44), login: R(W / 2 - 110, 315, 220, 48), loginBack: R(664, 366, 122, 44),
-  settings: R(128, C.CLUB_CARD_ROW_Y, 84, C.CLUB_CARD_H), rule: R(224, C.CLUB_CARD_ROW_Y, 84, C.CLUB_CARD_H),
-  calib: R(320, C.CLUB_CARD_ROW_Y, 140, C.CLUB_CARD_H), check: R(472, C.CLUB_CARD_ROW_Y, 120, C.CLUB_CARD_H),
-  songBack: R(700, C.CLUB_CARD_ROW_Y, 84, C.CLUB_CARD_H), records: R(604, C.CLUB_CARD_ROW_Y, 84, C.CLUB_CARD_H),   // 修正(1.5.1): 「戻る」をいちばん右に
+  // 修正(1.5.14): 「ランキング王」を足して7枚にしたので、幅を少しずつ詰めた（左端 128・右端 782。PC版 TMC1.0.2 と同じ）
+  settings: R(128, C.CLUB_CARD_ROW_Y, 64, C.CLUB_CARD_H), rule: R(197, C.CLUB_CARD_ROW_Y, 92, C.CLUB_CARD_H),
+  calib: R(294, C.CLUB_CARD_ROW_Y, 124, C.CLUB_CARD_H), check: R(423, C.CLUB_CARD_ROW_Y, 108, C.CLUB_CARD_H),
+  kings: R(536, C.CLUB_CARD_ROW_Y, 108, C.CLUB_CARD_H), kingsBack: R(W / 2 - 90, 420, 180, 40),
+  songBack: R(718, C.CLUB_CARD_ROW_Y, 64, C.CLUB_CARD_H), records: R(649, C.CLUB_CARD_ROW_Y, 64, C.CLUB_CARD_H),   // 修正(1.5.1): 「戻る」をいちばん右に
   diffBack: R(128, C.CLUB_CARD_ROW_Y, 120, C.CLUB_CARD_H), rank: R(260, C.CLUB_CARD_ROW_Y, 190, C.CLUB_CARD_H),
   gold: R(462, C.CLUB_CARD_ROW_Y, 170, C.CLUB_CARD_H),   // 追加(1.5.5): ロングノーツの数（PC版 1124_5 と同じ位置）
   next: R(W - 170, H - 55, 140, 36), testStart: R(W / 2 - 100, 350, 200, 40), redo: R(W / 2 - 150, 350, 300, 40),
@@ -39,7 +41,7 @@ const SETTING_ITEMS = [
 ];
 const BGM_SCENES = {
   LOGIN: [C.BGM_LOGIN, 1], WELCOME: [C.BGM_MENU, 1], SONG_SELECT: [C.BGM_MENU, 1], DIFF_SELECT: [C.BGM_MENU, 1], SETTINGS: [C.BGM_MENU, 1], CAMERA_ADJUST: [C.BGM_CALIB, C.BGM_CALIB_RATE],
-  HOME: [C.BGM_MENU, 1], RANKING_ASK: [C.BGM_MENU, 1],
+  HOME: [C.BGM_MENU, 1], RANKING_ASK: [C.BGM_MENU, 1], KINGS: [C.BGM_MENU, 1],
   CALIB_INTRO: [C.BGM_CALIB, C.BGM_CALIB_RATE], CALIBRATION: [C.BGM_CALIB, C.BGM_CALIB_RATE], CALIB_CONFIRM: [C.BGM_CALIB, C.BGM_CALIB_RATE],
   CHECK_DETECTION: [C.BGM_CHECK, C.BGM_CALIB_RATE],
 };
@@ -586,6 +588,7 @@ export const ClubScenes = {
     this.cardBtn(BTN.check, "判定チェック", () => { this.testState = "IDLE"; this.go("CHECK_DETECTION", "zoom_in"); });
     this.cardBtn(BTN.songBack, "戻る", () => this.go("LOGIN", "pan_right", () => this.goLogin()));
     this.cardBtn(BTN.records, "記録", () => this.go("HOME", "fade"));
+    this.cardBtn(BTN.kings, "ランキング王", () => { this.sync.refresh(true); this.go("KINGS", "fade"); });   // 追加(1.5.14)
     const st = this.sync.statusText();
     if (st) S.blit(art.text(F.m_xs, st, [232, 176, 192]), [20, 36]);
   },
@@ -912,6 +915,86 @@ export const ClubScenes = {
     this.scr.hotspot(80, 26, 200, 40, () => this.titleTap("HOME"));
     this.cardBtn(BTN.homeExport, "記録の書き出し（CSV）", () => this.exportCSV(), F.m_xs);   // 修正(1.5.1): 設定から移動
     this.cardBtn(BTN.homeBack, "曲選択へ戻る", () => this.go("SONG_SELECT", "fade"));
+  },
+  // 追加(1.5.14): ランキング王 — 遊べる曲・難易度のランキング（各トップ3）で、今1位になっている数が多い順（PC版 TMC1.0.2 と同じ）
+  kingsTable() {
+    const DJ = { EASY: "やさしい", NORMAL: "ふつう", HARD: "むずかしい" };
+    let boards = 0, missing = 0; const count = new Map(), where = new Map();
+    for (const song of this.songs) {
+      if (!song.enabled) continue;
+      for (const d of ["EASY", "NORMAL", "HARD"]) {
+        if (!this.diffEnabled[d]) continue;
+        boards++;
+        const top = this.sync.top3(song.title, d);
+        if (top == null) { missing++; continue; }
+        for (const e of top) {
+          if (Number(e.rank) !== 1 || !e.name) continue;
+          const nm = String(e.name);
+          count.set(nm, (count.get(nm) || 0) + 1);
+          if (!where.has(nm)) where.set(nm, []);
+          where.get(nm).push(`${song.title} ${DJ[d]}`);
+        }
+      }
+    }
+    const sorted = [...count.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+    const rows = []; let prev = null, prevRank = 0;
+    sorted.forEach(([name, n], i) => { const rank = n === prev ? prevRank : i + 1; rows.push([rank, name, n, where.get(name)]); prev = n; prevRank = rank; });
+    return { rows, boards, missing };
+  },
+  drawCrown(s, x, y, col) {
+    draw.polygon(s, col, [[x, y + 14], [x, y + 4], [x + 6, y + 9], [x + 11, y], [x + 16, y + 9], [x + 22, y + 4], [x + 22, y + 14]]);
+    s.fill(col, [x, y + 13, 23, 4]);
+    for (const [cx, cy] of [[x, y + 4], [x + 11, y], [x + 22, y + 4]]) draw.circle(s, col, [cx, cy], 2);
+  },
+  draw_KINGS() {
+    const S = this.club.screen, art = this.club.art, F = this.club.F, ink = C.CLUB_COL_INK, sub = C.CLUB_COL_INK_SUB, sy = this.sync;
+    if (!this._off) sy.refresh();
+    const P = R(80, 26, 640, 380);
+    const { rows, boards, missing } = this.kingsTable();
+    const mp = sy.myProfile() || {}, myName = mp.ranking ? mp.name : null, uid = this.user && this.user.id;
+    const key = JSON.stringify([rows, boards, missing, sy.rankingTime(), sy.online, sy.enabled, uid, myName]);
+    S.blit(art.cached("kings", key, () => {
+      const s = new Surface(W, H);
+      s.blit(art.bg("table"), [0, 0]);
+      s.fill([52, 8, 24], P.move(5, 7).arr()); s.blit(art.paper(P.w, P.h, 31), P.topleft); draw.rect(s, C.CLUB_COL_PAPER_EDGE, P, 2);
+      this.drawCrown(s, P.x + 22, P.y + 20, [206, 150, 20]);
+      s.blit(art.text(F.m_lg, "ランキング王", ink), [P.x + 52, P.y + 12]);
+      const t = sy.rankingTime();
+      if (t) { const ts = art.text(F.g_xs, t.slice(5, 16).replace("-", "/") + (sy.online === false ? " オフライン" : ""), sub); s.blit(ts, [P.right - 22 - ts.w, P.y + 22]); }
+      s.blit(art.text(F.m_xs, `遊べる曲・難易度のランキング（${boards}個）で、1位になっている数`, sub), [P.x + 24, P.y + 56]);
+      art._rule(s, P.x + 18, P.y + 78, P.w - 36);
+      let mtxt;
+      if (myName) {
+        const mine = rows.find((r) => r[1] === myName || r[1] === uid);
+        mtxt = mine ? `あなた（${myName}）：1位が ${mine[2]}個・ランキング王の ${mine[0]}位` : `あなた（${myName}）：まだ1位はありません`;
+      } else mtxt = "あなたはランキングに参加していません（設定から参加できます）";
+      s.blit(art.text(F.m_sm, mtxt, C.CLUB_COL_STAMP), [P.x + 24, P.y + 88]);
+      const y0 = P.y + 120;
+      let msg = null;
+      if (!sy.enabled) msg = "通信の設定がありません";
+      else if (boards && missing === boards) msg = sy.online === false ? "読み込めませんでした" : "読み込み中…";
+      else if (!rows.length) msg = "まだ1位の記録がありません";
+      if (msg) { art.text_c(s, F.m_md, msg, sub, W / 2, y0 + 60); return s; }
+      rows.slice(0, 9).forEach(([rank, name, n, wh], j) => {
+        const y = y0 + j * 28, col = (name === uid || name === myName) ? C.CLUB_COL_STAMP : ink;
+        if (rank <= 3) this.drawCrown(s, P.x + 24, y + 3, [[206, 150, 20], [160, 160, 176], [176, 110, 60]][rank - 1]);
+        s.blit(art.text(F.m_sm, `${rank}位`, col), [P.x + 54, y + 2]);
+        // 名前が長いときは「…」で切る（×の数と重ならないように）
+        let nm = name, nt = art.text(F.m_sm, nm, col);
+        while (nt.w > 180 && nm.length > 1) { nm = nm.slice(0, -1); nt = art.text(F.m_sm, nm + "…", col); }
+        s.blit(nt, [P.x + 100, y + 2]);
+        const ct = art.text(F.m_md, `×${n}`, col); s.blit(ct, [P.x + 330 - ct.w, y - 2]);
+        let wt = wh.join("、"), wsf = art.text(F.m_xs, wt, sub); const maxw = P.right - 24 - (P.x + 346);
+        while (wsf.w > maxw && wt.length > 1) { wt = wt.slice(0, -1); wsf = art.text(F.m_xs, wt + "…", sub); }
+        s.blit(wsf, [P.x + 346, y + 4]);
+        if (j < Math.min(rows.length, 9) - 1) s.fill([232, 208, 204], [P.x + 24, y + 25, P.w - 48, 1]);
+      });
+      if (rows.length > 9) art.text_c(s, F.m_xs, `ほか ${rows.length - 9}人`, sub, W / 2, y0 + 9 * 28);
+      return s;
+    }), [0, 0]);
+    const st = sy.statusText();
+    if (st) S.blit(art.text(F.m_xs, st, [232, 176, 192]), [20, 8]);
+    this.cardBtn(BTN.kingsBack, "曲選択へ戻る", () => this.go("SONG_SELECT", "fade"));
   },
 };
 

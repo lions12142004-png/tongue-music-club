@@ -12,7 +12,7 @@ import { Sync } from "./sync.js";
 import { SYNC } from "./config.js";
 import { initClub, ClubScenes, ClubPlay } from "./club/scenes.js";   // 追加(1.5.0): Tongue Music Club の演出
 
-export const APP_VERSION = "1.5.13";
+export const APP_VERSION = "1.5.14";
 const MODEL_VERSION = "html2-rfsvm";     // 学習方法を変えたら上げる（保存してある特徴量から自動で学習し直す）
 const FEAT_VERSIONS = ["feat21-v1", "html1-feat21"];   // 特徴量の版（変えたら先頭に足す。古い特徴量は読まずに測り直しへ）
 const MOCK = new URLSearchParams(location.search).has("mock");
