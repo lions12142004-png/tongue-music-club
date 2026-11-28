@@ -16,6 +16,8 @@ export function menuSongRects() {
   return out;
 }
 export function menuDiffRects() { const page = bookPages()[1]; return [0, 1, 2].map((i) => new Rect(page.x + 10, page.y + 64 + i * 78, page.w - 20, 72)); }
+// 追加(1.5.16): 難易度の行の右下に置く「譜面チェック」の札
+export function chartBtnRect(r) { return new Rect(r.right - 14 - 100, r.y + 38, 100, 28); }
 export function menuTurnRects() { const [x, y, w, h] = C.CLUB_BOOK_RECT; return [new Rect(x - 32, y + Math.floor(h / 2) - 32, 36, 64), new Rect(x + w - 4, y + Math.floor(h / 2) - 32, 36, 64)]; }
 export function mixerRects(i) {
   const cx = C.CLUB_MIXER_CX[i], [y0, y1] = C.CLUB_MIXER_TRACK;
@@ -368,7 +370,8 @@ export class ClubArt {
     rows.forEach(([name, en, high, last, colr], i) => {
       const r = rects[i], c = en ? colr : C.CLUB_COL_INK_OFF;
       this.leader_line(s, F.m_md, name, `HIGH: ${high.toLocaleString("en-US")}`, r.x + 14, r.y + 8, r.w - 28, c, en ? ink : C.CLUB_COL_INK_OFF);
-      const tt = this.text(F.m_sm, `前回: ${last.toLocaleString("en-US")}`, en ? sub : C.CLUB_COL_INK_OFF); s.blit(tt, [r.right - 14 - tt.w, r.y + 40]);
+      // 修正(1.5.16): 選べる難易度は、右下に「譜面チェック」の札を置くので、「前回」はその左に寄せる
+      const tt = this.text(F.m_sm, `前回: ${last.toLocaleString("en-US")}`, en ? sub : C.CLUB_COL_INK_OFF); s.blit(tt, [(en ? chartBtnRect(r).x - 10 : r.right - 14) - tt.w, r.y + 40]);
       if (i !== rows.length - 1) s.fill([226, 196, 192], [r.x + 10, r.bottom + 2, r.w - 20, 1]);
       if (!en) { const st = this.stamp("準備中", F.m_md); s.blit(st, [r.x + 96, r.centery - Math.floor(st.h / 2) + 6]); }
     });

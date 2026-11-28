@@ -5,7 +5,7 @@
 import { W, H, TAU, Rect, Surface, ScreenSurf, draw, transform, mix, scaleCol, clamp01, setRes, loadImage, softBlur } from "./pg.js";
 import * as C from "./cfg.js";
 import { TitleScene } from "./title.js";
-import { ClubArt, TransitionManager, makeFonts, bookPages, menuSongRects, menuDiffRects, menuTurnRects, mixerRects, faderY, faderRatio } from "./art.js";
+import { ClubArt, TransitionManager, makeFonts, bookPages, menuSongRects, menuDiffRects, menuTurnRects, chartBtnRect, mixerRects, faderY, faderRatio } from "./art.js";
 import { PlayStage, StageShow, p3d } from "./stage.js";
 import { ClubSound } from "./sound.js";
 
@@ -20,6 +20,7 @@ const BTN = {
   settings: R(128, C.CLUB_CARD_ROW_Y, 64, C.CLUB_CARD_H), rule: R(197, C.CLUB_CARD_ROW_Y, 92, C.CLUB_CARD_H),
   calib: R(294, C.CLUB_CARD_ROW_Y, 124, C.CLUB_CARD_H), check: R(423, C.CLUB_CARD_ROW_Y, 108, C.CLUB_CARD_H),
   kings: R(536, C.CLUB_CARD_ROW_Y, 108, C.CLUB_CARD_H), kingsBack: R(W / 2 - 90, 420, 180, 40),
+  chartBack: R(W / 2 - 90, 424, 180, 40),   // 追加(1.5.16): 譜面チェックの「難易度選択へ戻る」
   songBack: R(718, C.CLUB_CARD_ROW_Y, 64, C.CLUB_CARD_H), records: R(649, C.CLUB_CARD_ROW_Y, 64, C.CLUB_CARD_H),   // 修正(1.5.1): 「戻る」をいちばん右に
   diffBack: R(128, C.CLUB_CARD_ROW_Y, 120, C.CLUB_CARD_H), rank: R(260, C.CLUB_CARD_ROW_Y, 190, C.CLUB_CARD_H),
   gold: R(462, C.CLUB_CARD_ROW_Y, 170, C.CLUB_CARD_H),   // 追加(1.5.5): ロングノーツの数（PC版 1124_5 と同じ位置）
@@ -41,7 +42,7 @@ const SETTING_ITEMS = [
 ];
 const BGM_SCENES = {
   LOGIN: [C.BGM_LOGIN, 1], WELCOME: [C.BGM_MENU, 1], SONG_SELECT: [C.BGM_MENU, 1], DIFF_SELECT: [C.BGM_MENU, 1], SETTINGS: [C.BGM_MENU, 1], CAMERA_ADJUST: [C.BGM_CALIB, C.BGM_CALIB_RATE],
-  HOME: [C.BGM_MENU, 1], RANKING_ASK: [C.BGM_MENU, 1], KINGS: [C.BGM_MENU, 1],
+  HOME: [C.BGM_MENU, 1], RANKING_ASK: [C.BGM_MENU, 1], KINGS: [C.BGM_MENU, 1], CHART_VIEW: [C.BGM_MENU, 1],
   CALIB_INTRO: [C.BGM_CALIB, C.BGM_CALIB_RATE], CALIBRATION: [C.BGM_CALIB, C.BGM_CALIB_RATE], CALIB_CONFIRM: [C.BGM_CALIB, C.BGM_CALIB_RATE],
   CHECK_DETECTION: [C.BGM_CHECK, C.BGM_CALIB_RATE],
 };
@@ -612,6 +613,8 @@ export const ClubScenes = {
       const [d, en] = rows[i]; if (!en) return;
       if (this.hov(r)) S.blit(this.hoverBand(r.w, r.h), r.topleft);
       this.tap(r, () => { this.selDiff = d; this.placementMode = "play"; this.go("PLACEMENT", "fade"); });
+      // 追加(1.5.16): 「譜面チェック」の札（行の右下）。行より後に置くので、こちらが優先される
+      this.cardBtn(chartBtnRect(r), "譜面チェック", () => { this.chartDiff = d; this.go("CHART_VIEW", "fade"); }, F.m_xs);
     });
     this.cardBtn(BTN.diffBack, "曲選択へ", () => this.go("SONG_SELECT", "page_back", null, C.CLUB_BOOK_RECT));
     this.cardBtn(BTN.rank, this.rankView ? "コースを選ぶ" : "みんなのランキング", () => { this.rankView = !this.rankView; this.goldView = false; if (this.rankView) this.sync.refresh(true); });
@@ -620,6 +623,70 @@ export const ClubScenes = {
     if (st) S.blit(art.text(F.m_xs, st, [232, 176, 192]), [20, 36]);
   },
   // 追加(1.5.5): その曲・難易度の譜面にある、5秒以上の舌のロングノーツの数 {方向: 数}。読み込み中は undefined、失敗は null
+  // 追加(1.5.16): 譜面ファイルの中身（読み込み中は undefined、失敗は null）
+  beatmapData(song, d) {
+    const path = (song.beatmaps && song.beatmaps[d]) || song.beatmap;
+    this._bmCache = this._bmCache || new Map();
+    if (!this._bmCache.has(path)) {
+      this._bmCache.set(path, undefined);
+      fetch(path).then((r) => r.json()).then((bm) => this._bmCache.set(path, bm)).catch(() => this._bmCache.set(path, null));
+    }
+    return this._bmCache.get(path);
+  },
+  // 追加(1.5.16): 譜面チェック — 譜面の全体図（20秒ずつ1段。上の線が舌、下の線が肩。棒はロングノーツ、金色は5秒以上の舌）
+  draw_CHART_VIEW() {
+    const S = this.club.screen, art = this.club.art, F = this.club.F, ink = C.CLUB_COL_INK, sub = C.CLUB_COL_INK_SUB;
+    const song = this.songs[this.selSong], d = this.chartDiff || "NORMAL", DJ = { EASY: "やさしい", NORMAL: "ふつう", HARD: "むずかしい" };
+    const bm = this.beatmapData(song, d), gold = this.goldCounts(song, d);
+    const P = R(122, 10, 666, 404);
+    S.blit(art.cached("chart_view", JSON.stringify([song.title, d, bm ? bm.length : String(bm), gold || null]), () => {
+      const s = art.bg("table").copy();
+      s.fill([52, 8, 24], P.move(5, 7).arr()); s.blit(art.paper(P.w, P.h, 37), P.topleft); draw.rect(s, C.CLUB_COL_PAPER_EDGE, P, 2);
+      s.blit(art.text(F.m_md, `譜面チェック　${song.title}（${DJ[d]}）`, ink), [P.x + 18, P.y + 8]);
+      if (!bm) { art.text_c(s, F.m_md, bm === null ? "譜面を読み込めませんでした" : "読み込み中…", sub, P.centerx, P.y + 180); return s; }
+      // 2行目：ノーツの数と、5秒以上のロングノーツの数（方向ごと）
+      let x = P.x + 20; const y2 = P.y + 42;
+      const t1 = art.text(F.m_xs, `ノーツ ${bm.length}個　5秒以上：`, sub); s.blit(t1, [x, y2 + 2]); x += t1.w + 4;
+      for (const k of DIRS5) {
+        const ic = art.small_icon(k, 18); if (ic) s.blit(ic, [x, y2]); x += 20;
+        const n = art.text(F.g_xs, `×${gold ? gold[k] : 0}`, ink); s.blit(n, [x, y2 + 3]); x += n.w + 8;
+      }
+      // 凡例
+      const lg = [[[214, 168, 40], "5秒以上"], [[232, 120, 160], "ロング"], [[96, 140, 210], "肩ロング"]];
+      let lx = P.right - 16;
+      for (let i = lg.length - 1; i >= 0; i--) { const [c, l] = lg[i], t = art.text(F.m_xs, l, sub); lx -= t.w; s.blit(t, [lx, y2 + 2]); lx -= 22; s.fill(c, [lx, y2 + 8, 18, 6]); lx -= 10; }
+      art._rule(s, P.x + 14, P.y + 64, P.w - 28);
+      // 本体：20秒ずつの段
+      const endMs = Math.max(song.end_time || 0, ...bm.map((n) => n.time + (n.duration || 0))), SEG = 20000;
+      const nRows = Math.max(1, Math.ceil(endMs / SEG)), y0 = P.y + 72, rowH = Math.min(56, Math.floor((P.bottom - 6 - y0) / nRows));
+      const X0 = P.x + 76, X1 = P.right - 18, k = (X1 - X0) / SEG;
+      const laneY = (t) => (t.startsWith("shoulder") ? 34 : 13);
+      for (let i = 0; i < nRows; i++) {
+        const y = y0 + i * rowH, t0 = i * SEG;
+        const m = Math.floor(t0 / 60000), sec = Math.floor((t0 % 60000) / 1000);
+        s.blit(art.text(F.g_xs, `${m}:${String(sec).padStart(2, "0")}`, sub), [P.x + 10, y + 16]);
+        s.blit(art.text(F.m_xs, "舌", sub), [P.x + 46, y + 5]); s.blit(art.text(F.m_xs, "肩", sub), [P.x + 46, y + 26]);
+        for (let tk = 0; tk <= SEG; tk += 5000) s.fill([236, 214, 208], [Math.round(X0 + tk * k), y + 2, 1, 42]);
+        s.fill([214, 186, 180], [X0, y + 13, X1 - X0, 1]); s.fill([214, 186, 180], [X0, y + 34, X1 - X0, 1]);
+      }
+      const bars = [], icons = [];
+      for (const n of bm) {
+        const t = n.time, dur = n.duration || 0, ly = laneY(n.type), sh = n.type.startsWith("shoulder");
+        if (dur > 0) {
+          const col = sh ? [96, 140, 210] : dur >= 5000 ? [214, 168, 40] : [232, 120, 160];
+          for (let i = Math.floor(t / SEG); i <= Math.floor((t + dur - 1) / SEG) && i < nRows; i++) {
+            const a = Math.max(t, i * SEG) - i * SEG, b = Math.min(t + dur, (i + 1) * SEG) - i * SEG;
+            bars.push([col, Math.round(X0 + a * k), y0 + i * rowH + ly - 3, Math.max(2, Math.round((b - a) * k)), 6]);
+          }
+        }
+        const i = Math.floor(t / SEG); if (i < nRows) icons.push([n.type, Math.round(X0 + (t - i * SEG) * k), y0 + i * rowH + ly]);
+      }
+      for (const [c, bx, by, bw, bh] of bars) draw.rect(s, c, [bx, by, bw, bh], 0, 3);
+      for (const [ty, ix, iy] of icons) { const ic = art.small_icon(ty, 18); if (ic) s.blit(ic, [ix - 9, iy - 9]); }
+      return s;
+    }), [0, 0]);
+    this.cardBtn(BTN.chartBack, "難易度選択へ戻る", () => this.go("DIFF_SELECT", "fade"));
+  },
   goldCounts(song, d) {
     const path = (song.beatmaps && song.beatmaps[d]) || song.beatmap;
     this._goldCache = this._goldCache || new Map();
