@@ -340,7 +340,7 @@ export class ClubArt {
     menuSongRects().forEach((r, slot) => {
       const idx = start + slot; if (idx >= songs.length) return;
       const song = songs[idx], en = song.enabled !== false, col = en ? ink : C.CLUB_COL_INK_OFF, sec = Math.trunc((song.end_time || 0) / 1000);
-      const left = `${idx + 1}. ${song.title}`, font = F.m_md.size(left)[0] <= r.w - 90 ? F.m_md : F.m_sm;
+      const left = `${idx + 1}. ${song.title}`, font = [F.m_md, F.m_sm].find((f) => f.size(left)[0] <= r.w - 90) || F.m_xs;   // 修正(1.5.17): 長い曲名は小さい字に
       this.leader_line(s, font, left, `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`, r.x + 10, r.y + 8, r.w - 20, col);
       const high = highs[slot] || 0;
       s.blit(this.text(F.m_sm, high > 0 ? `最高記録  ${high.toLocaleString("en-US")} 点` : "― まだ演奏していません ―", en ? sub : C.CLUB_COL_INK_OFF), [r.x + 34, r.y + 40]);
@@ -354,7 +354,7 @@ export class ClubArt {
   paint_menu_song(s, song, rows) {
     const F = this.F, [PL, PR] = this.paint_book(s), ink = C.CLUB_COL_INK, sub = C.CLUB_COL_INK_SUB;
     this.text_c(s, F.m_sm, "― 本日の一曲 ―", sub, PL.centerx, PL.y + 30);
-    const title = song.title, font = F.m_lg.size(title)[0] <= PL.w - 48 ? F.m_lg : F.m_md;
+    const title = song.title, font = [F.m_lg, F.m_md].find((f) => f.size(title)[0] <= PL.w - 48) || F.m_sm;   // 修正(1.5.17)
     this.text_c(s, font, title, ink, PL.centerx, PL.y + 84);
     this._rule(s, PL.centerx - 70, PL.y + 136, 140);
     const sec = Math.trunc((song.end_time || 0) / 1000);
@@ -390,7 +390,7 @@ export class ClubArt {
     s.blit(this.text(F.m_sm, dateText, ink), [18, 90]);
     this.leader_line(s, F.m_sm, "出演者", player, 18, 114, w - 36, ink);
     s.blit(this.text(F.m_sm, "演目", sub), [18, 140]);
-    const f = F.m_md.size(songLine)[0] > w - 36 ? F.m_sm : F.m_md, t = this.text(f, songLine, ink); s.blit(t, [w - 18 - t.w, 160]);
+    const f = [F.m_md, F.m_sm].find((ff) => ff.size(songLine)[0] <= w - 36) || F.m_xs, t = this.text(f, songLine, ink); s.blit(t, [w - 18 - t.w, 160]);   // 修正(1.5.17): 長い曲名
     dash(196);
     s.blit(this.text(F.m_md, "出演料", ink), [18, 206]);
     const fee = `￥${score.toLocaleString("en-US")}`, num = (F.m_xl.size(fee)[0] <= w - 36 ? F.m_xl : F.m_lg).render(fee, true, ink);
