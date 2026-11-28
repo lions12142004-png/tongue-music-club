@@ -12,7 +12,7 @@ import { Sync } from "./sync.js";
 import { SYNC } from "./config.js";
 import { initClub, ClubScenes, ClubPlay } from "./club/scenes.js";   // 追加(1.5.0): Tongue Music Club の演出
 
-export const APP_VERSION = "1.5.12";
+export const APP_VERSION = "1.5.13";
 const MODEL_VERSION = "html2-rfsvm";     // 学習方法を変えたら上げる（保存してある特徴量から自動で学習し直す）
 const FEAT_VERSIONS = ["feat21-v1", "html1-feat21"];   // 特徴量の版（変えたら先頭に足す。古い特徴量は読まずに測り直しへ）
 const MOCK = new URLSearchParams(location.search).has("mock");
@@ -56,9 +56,12 @@ const SONGS_PLAYABLE = [
     beatmaps: { EASY: BM + "track6_easy.json", NORMAL: BM + "track6.json", HARD: BM + "track6_hard.json" } },
   { title: "トルコ行進曲", audio: "assets/audio/turkish.m4a", beatmap: BM + "track8.json", end_time: 91000,
     beatmaps: { EASY: BM + "track8_easy.json", NORMAL: BM + "track8.json", HARD: BM + "track8_hard.json" } },
+  // 追加(1.5.13): 3曲目「運命」（曲の長さ 約112秒。最後のノーツは 108.6秒で終わる）
+  { title: "運命", audio: "assets/audio/unmei.m4a", beatmap: BM + "track7.json", end_time: 111000,
+    beatmaps: { EASY: BM + "track7_easy.json", NORMAL: BM + "track7.json", HARD: BM + "track7_hard.json" } },
 ];
 const SONGS = SONGS_PLAYABLE.map((s) => ({ ...s, enabled: true })).concat(
-  ["仮の曲3", "仮の曲4", "仮の曲5", "仮の曲6", "仮の曲7", "仮の曲8", "仮の曲9", "仮の曲10", "仮の曲11", "仮の曲12"]
+  ["仮の曲4", "仮の曲5", "仮の曲6", "仮の曲7", "仮の曲8", "仮の曲9", "仮の曲10", "仮の曲11", "仮の曲12"]
     .map((title) => ({ title, audio: "assets/audio/elise2.m4a", beatmap: BM + "track6.json", end_time: 120000, enabled: false })));
 // 追加(1.5.12): その曲・難易度の譜面ファイル
 export const beatmapFor = (song) => (song.beatmaps && song.beatmaps[song.diff || "NORMAL"]) || song.beatmap;
